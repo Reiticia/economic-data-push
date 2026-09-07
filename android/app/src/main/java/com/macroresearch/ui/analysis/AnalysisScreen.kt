@@ -1,5 +1,7 @@
 package com.macroresearch.ui.analysis
 
+import androidx.compose.ui.res.stringResource
+import com.macroresearch.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -33,7 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,8 +46,11 @@ import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.MarketResponse
 import com.macroresearch.data.model.MarketSnapshot
 import com.macroresearch.ui.AnalysisViewModel
-import com.macroresearch.ui.common.formatChange
-import com.macroresearch.ui.common.value
+import com.macroresearch.ui.common.assetLabel
+import com.macroresearch.ui.common.macroSignalLabel
+import com.macroresearch.ui.common.statusLabel
+import com.macroresearch.ui.common.localizedChange as formatChange
+import com.macroresearch.ui.common.localizedValue as value
 import com.macroresearch.ui.theme.AssetDown
 import com.macroresearch.ui.theme.AssetUp
 import com.macroresearch.ui.theme.Dovish
@@ -61,11 +66,11 @@ fun AnalysisScreen(id: Long, repository: MacroRepository, onBack: () -> Unit) {
     val vm: AnalysisViewModel = viewModel(key = "analysis-$id", factory = viewModelFactory { AnalysisViewModel(id, repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     Scaffold(
-        topBar = { TopAppBar(title = { Text(state.event?.event ?: "分析", fontWeight = FontWeight.Bold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") } }) },
+        topBar = { TopAppBar(title = { Text(state.event?.event ?: stringResource(R.string.analysis), fontWeight = FontWeight.Bold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) } }) },
     ) { padding ->
         when {
             state.loading -> Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
-            state.event == null -> Column(Modifier.fillMaxSize().padding(padding).padding(24.dp)) { Text("事件加载失败"); Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error) }
+            state.event == null -> Column(Modifier.fillMaxSize().padding(padding).padding(24.dp)) { Text(stringResource(R.string.event_load_failed)); Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error) }
             state.report == null -> AnalysisPending(state.event!!, Modifier.padding(padding), state.error, vm::refresh)
             else -> AnalysisContent(state.event!!, state.report!!, state.market, Modifier.padding(padding))
         }
@@ -76,11 +81,11 @@ fun AnalysisScreen(id: Long, repository: MacroRepository, onBack: () -> Unit) {
 private fun AnalysisPending(event: EconomicEvent, modifier: Modifier, error: String?, retry: () -> Unit) {
     Column(modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)) {
         CircularProgressIndicator()
-        Text("正在观察市场反应…", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("当前状态：${event.status}", color = MaterialTheme.colorScheme.primary)
-        Text("分析会随 1m / 5m / 15m / 30m / 60m 数据逐步完成。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.observing_market), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.current_status, statusLabel(event.status)), color = MaterialTheme.colorScheme.primary)
+        Text(stringResource(R.string.analysis_pending_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
         error?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
-        Button(onClick = retry) { Text("重新检查") }
+        Button(onClick = retry) { Text(stringResource(R.string.retry)) }
     }
 }
 
@@ -102,12 +107,12 @@ private fun AnalysisContent(event: EconomicEvent, report: AnalysisReport, market
 private fun ResultCard(event: EconomicEvent, report: AnalysisReport) {
     Card {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("数据结果", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.data_results), fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("Actual", event.value(event.actual), true)
-                Metric("Consensus", event.value(event.consensus))
-                Metric("Previous", event.value(event.previous))
-                Metric("Surprise", report.rawSurprise?.let { (if (it.startsWith("-")) "" else "+") + it + if (event.unit == "%") "%" else "" } ?: "--", true)
+                Metric(stringResource(R.string.actual), event.value(event.actual), true)
+                Metric(stringResource(R.string.consensus), event.value(event.consensus))
+                Metric(stringResource(R.string.previous), event.value(event.previous))
+                Metric(stringResource(R.string.surprise), report.rawSurprise?.let { (if (it.startsWith("-")) "" else "+") + it + if (event.unit == "%") "%" else "" } ?: "--", true)
             }
         }
     }
@@ -123,10 +128,16 @@ private fun Metric(label: String, value: String, highlight: Boolean = false) = C
 private fun SignalCard(report: AnalysisReport) {
     val hawkish = report.macroSignal.contains("hawkish")
     val color = if (hawkish) Hawkish else if (report.macroSignal.contains("dovish")) Dovish else MaterialTheme.colorScheme.onSurfaceVariant
-    Card(colors = CardDefaults.cardColors(containerColor = color.copy(alpha = .15f)), border = BorderStroke(1.dp, color)) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = color.copy(alpha = .08f).compositeOver(MaterialTheme.colorScheme.surface),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        border = BorderStroke(1.dp, color.copy(alpha = .45f)),
+    ) {
         Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(if (hawkish) "🦅  ${report.macroSignal.label()}" else "${report.macroSignal.label()}", style = MaterialTheme.typography.titleLarge, color = color, fontWeight = FontWeight.Bold)
-            Text("规则信号描述宏观倾向，不代表资产必然按该方向运行。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(macroSignalLabel(report.macroSignal), style = MaterialTheme.typography.titleLarge, color = color, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.signal_disclaimer), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -135,12 +146,12 @@ private fun SignalCard(report: AnalysisReport) {
 private fun ExpectedCard(report: AnalysisReport) {
     Card {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("理论市场影响", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.expected_reactions), fontWeight = FontWeight.Bold)
             report.expectedReactions.forEach { reaction ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(reaction.symbol.label())
-                    Text(if (reaction.direction == "up") "↑" else if (reaction.direction == "down") "↓" else "→", color = if (reaction.direction == "up") AssetUp else if (reaction.direction == "down") AssetDown else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                    Text(reaction.rationale, Modifier.width(210.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Text(assetLabel(reaction.symbol), Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium)
+                    Text(if (reaction.direction == "up") "↑" else if (reaction.direction == "down") "↓" else "→", color = if (reaction.direction == "up") AssetUp else if (reaction.direction == "down") AssetDown else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(24.dp), fontWeight = FontWeight.Bold)
+                    Text(reaction.rationale, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -152,17 +163,19 @@ private fun ObservedTable(report: AnalysisReport) {
     val comparisons = report.comparisons.associateBy { it.symbol }
     Card {
         Column(Modifier.padding(16.dp).horizontalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("实际行情", fontWeight = FontWeight.Bold)
-            Row(Modifier.width(620.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                listOf("Asset", "1m", "5m", "15m", "30m", "60m", "符合度").forEach { Text(it, Modifier.width(76.dp), style = MaterialTheme.typography.labelSmall) }
+            Text(stringResource(R.string.observed_reactions), fontWeight = FontWeight.Bold)
+            Row(Modifier.width(760.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.asset), Modifier.width(100.dp), style = MaterialTheme.typography.labelSmall)
+                listOf(1, 5, 15, 30, 60).forEach { Text(stringResource(R.string.minutes_short, it), Modifier.width(100.dp), style = MaterialTheme.typography.labelSmall) }
+                Text(stringResource(R.string.conformity), Modifier.width(100.dp), style = MaterialTheme.typography.labelSmall)
             }
             HorizontalDivider()
             report.observedReactions.forEach { reaction ->
-                Row(Modifier.width(620.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    val values = listOf(reaction.symbol.label(), formatChange(reaction.change1m, reaction.reactionUnit), formatChange(reaction.change5m, reaction.reactionUnit), formatChange(reaction.change15m, reaction.reactionUnit), formatChange(reaction.change30m, reaction.reactionUnit), formatChange(reaction.change60m, reaction.reactionUnit))
-                    values.forEachIndexed { index, value -> Text(value, Modifier.width(76.dp), color = if (index > 0 && value.startsWith("+")) AssetUp else if (index > 0 && value.startsWith("-")) AssetDown else MaterialTheme.colorScheme.onSurface) }
+                Row(Modifier.width(760.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    val values = listOf(assetLabel(reaction.symbol), formatChange(reaction.change1m, reaction.reactionUnit), formatChange(reaction.change5m, reaction.reactionUnit), formatChange(reaction.change15m, reaction.reactionUnit), formatChange(reaction.change30m, reaction.reactionUnit), formatChange(reaction.change60m, reaction.reactionUnit))
+                    values.forEachIndexed { index, value -> Text(value, Modifier.width(100.dp), color = if (index > 0 && value.startsWith("+")) AssetUp else if (index > 0 && value.startsWith("-")) AssetDown else MaterialTheme.colorScheme.onSurface) }
                     val conforms = comparisons[reaction.symbol]?.conforms
-                    Text(if (conforms == true) "符合" else if (conforms == false) "背离" else "--", Modifier.width(76.dp), color = if (conforms == true) AssetUp else if (conforms == false) AssetDown else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (conforms == null) "--" else stringResource(if (conforms) R.string.conforms else R.string.diverges), Modifier.width(100.dp), color = if (conforms == true) AssetUp else if (conforms == false) AssetDown else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -176,14 +189,14 @@ private fun ReactionTimeline(event: EconomicEvent, market: MarketResponse?) {
     Card {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("事件反应时间线", fontWeight = FontWeight.Bold)
-                Text("T${if (minute >= 0) "+" else ""}${minute.toInt()}m", color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.reaction_timeline), fontWeight = FontWeight.Bold)
+                Text(stringResource(if (minute < 0) R.string.before_release else R.string.after_release, abs(minute.toInt())), color = MaterialTheme.colorScheme.primary)
             }
             Slider(value = minute, onValueChange = { minute = it }, valueRange = -5f..60f, steps = 64)
             listOf("gold", "dxy", "us2y", "nasdaq100", "bitcoin").forEach { symbol ->
                 val change = timelineChange(event.eventTime, samples.filter { it.symbol == symbol }, minute.toInt(), symbol in setOf("us2y", "us10y"))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(symbol.label())
+                    Text(assetLabel(symbol))
                     Text(formatChange(change, if (symbol.startsWith("us") && symbol.endsWith("y")) "basis_points" else "percent"), color = when { change == null -> MaterialTheme.colorScheme.onSurfaceVariant; change >= 0 -> AssetUp; else -> AssetDown })
                 }
             }
@@ -200,5 +213,3 @@ private fun timelineChange(eventTime: String, values: List<MarketSnapshot>, minu
     if (abs(Duration.between(target, Instant.parse(sample.timestamp)).seconds) > 180 || baseline.price == 0.0) return null
     return if (yield) (sample.price - baseline.price) * 100 else (sample.price - baseline.price) / baseline.price * 100
 }
-
-private fun String.label(): String = split('_').joinToString(" ") { part -> part.replaceFirstChar(Char::uppercase) }

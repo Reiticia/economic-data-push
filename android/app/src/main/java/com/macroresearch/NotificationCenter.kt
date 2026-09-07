@@ -13,12 +13,14 @@ import com.macroresearch.data.model.SocketEvent
 class NotificationCenter(private val context: Context) {
     private val manager = NotificationManagerCompat.from(context)
 
-    init {
+    init { updateChannel(ContextCompat.getContextForLanguage(context)) }
+
+    private fun updateChannel(localized: Context) {
         val channel = NotificationChannel(
             RELEASE_CHANNEL,
-            "财经数据公布",
+            localized.getString(R.string.notification_channel),
             NotificationManager.IMPORTANCE_HIGH,
-        ).apply { description = "Actual 公布及分析完成提醒" }
+        ).apply { description = localized.getString(R.string.notification_channel_description) }
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
@@ -27,16 +29,18 @@ class NotificationCenter(private val context: Context) {
             PackageManager.PERMISSION_GRANTED
         ) return
 
+        val localized = ContextCompat.getContextForLanguage(context)
+        updateChannel(localized)
         val title: String
         val body: String
         when (event.type) {
             "economic_event_released" -> {
-                title = "${event.event ?: "财经数据"} 已公布"
-                body = "Actual ${event.actual ?: "--"} · Consensus ${event.consensus ?: "--"}"
+                title = localized.getString(R.string.notification_released, event.event ?: localized.getString(R.string.economic_data))
+                body = localized.getString(R.string.actual_consensus, event.actual ?: "--", event.consensus ?: "--")
             }
             "analysis_completed" -> {
-                title = "市场反应分析已完成"
-                body = "事件 #${event.eventId} 的 60 分钟分析已生成"
+                title = localized.getString(R.string.notification_analysis_title)
+                body = localized.getString(R.string.notification_analysis_body, event.eventId)
             }
             else -> return
         }

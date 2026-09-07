@@ -17,7 +17,8 @@ class FormattersTest {
     @Test
     fun countdownHandlesUpcomingAndReleasedEvents() {
         assertEquals("01:01:01", countdown("2026-09-07T01:01:01Z", Instant.parse("2026-09-07T00:00:00Z")))
-        assertEquals("已公布", countdown("2026-09-06T23:59:59Z", Instant.parse("2026-09-07T00:00:00Z")))
+        assertEquals("Released", countdown("2026-09-06T23:59:59Z", Instant.parse("2026-09-07T00:00:00Z")))
+        assertEquals("已公布", countdown("2026-09-06T23:59:59Z", Instant.parse("2026-09-07T00:00:00Z"), releasedLabel = "已公布"))
     }
 
     @Test

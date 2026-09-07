@@ -1,5 +1,7 @@
 package com.macroresearch.ui.home
 
+import androidx.compose.ui.res.stringResource
+import com.macroresearch.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -43,11 +44,13 @@ import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.ui.HomeViewModel
 import com.macroresearch.ui.common.EventCard
 import com.macroresearch.ui.common.ImportanceDots
-import com.macroresearch.ui.common.countdown
+import com.macroresearch.ui.common.assetLabel
+import com.macroresearch.ui.common.importanceLabel
+import com.macroresearch.ui.common.localizedCountdown as countdown
 import com.macroresearch.ui.common.flag
-import com.macroresearch.ui.common.localDate
+import com.macroresearch.ui.common.localizedDate as localDate
 import com.macroresearch.ui.common.localTime
-import com.macroresearch.ui.common.value
+import com.macroresearch.ui.common.localizedValue as value
 import com.macroresearch.ui.theme.Upcoming
 import com.macroresearch.ui.viewModelFactory
 import kotlinx.coroutines.delay
@@ -86,31 +89,31 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                     )
-                    Text(next?.localDate() ?: "宏观事件研究", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(next?.localDate() ?: stringResource(R.string.research_tagline), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(Icons.Outlined.Notifications, "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Outlined.Notifications, stringResource(R.string.notifications), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (next != null) item { NextEventCard(next, { onEvent(next.id) }) }
         if (refresh.loading && events.isEmpty()) item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
         }
-        refresh.error?.let { message -> item { Text("离线缓存 · $message", color = Upcoming) } }
+        refresh.error?.let { message -> item { Text(stringResource(R.string.offline_cache, message), color = Upcoming) } }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("今日事件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${today.size} 个事件", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.today_events), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.event_count, today.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         items(today, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
         item {
-            Text("市场概览", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.market_overview), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             val latest = market?.snapshots.orEmpty().groupBy { it.symbol }
                 .mapValues { (_, values) -> values.maxByOrNull { it.timestamp } }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("nasdaq100" to "NASDAQ", "dxy" to "DXY", "gold" to "Gold").forEach { (symbol, label) ->
-                    MarketMiniCard(label, latest[symbol]?.price, Modifier.weight(1f))
+                listOf("nasdaq100", "dxy", "gold").forEach { symbol ->
+                    MarketMiniCard(assetLabel(symbol), latest[symbol]?.price, Modifier.weight(1f))
                 }
             }
         }
@@ -125,24 +128,32 @@ private fun NextEventCard(event: EconomicEvent, onClick: () -> Unit) {
     }
     Card(
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF2B2119)),
-        border = BorderStroke(1.dp, Color(0xFFD97B26)),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("▣  下一重要事件", color = Upcoming, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.next_event), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("${flag(event.country)}  ${event.event}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(countdown(event.eventTime, now), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("${flag(event.country)}  ${event.event}", modifier = Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    countdown(event.eventTime, now),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(event.localTime())
-                Spacer(Modifier.width(8.dp)); Text("· 高重要性", color = Upcoming); Spacer(Modifier.width(8.dp)); ImportanceDots(event.importance)
+                Spacer(Modifier.width(8.dp)); Text("· ${importanceLabel(event.importance)}", color = MaterialTheme.colorScheme.tertiary); Spacer(Modifier.width(8.dp)); ImportanceDots(event.importance)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.16f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                ValueColumn("Previous", event.value(event.previous))
-                ValueColumn("Consensus", event.value(event.consensus))
-                ValueColumn("Forecast", event.value(event.forecast))
+                ValueColumn(stringResource(R.string.previous), event.value(event.previous))
+                ValueColumn(stringResource(R.string.consensus), event.value(event.consensus))
+                ValueColumn(stringResource(R.string.forecast), event.value(event.forecast))
             }
         }
     }
@@ -156,11 +167,11 @@ private fun ValueColumn(label: String, value: String) = Column {
 
 @Composable
 private fun MarketMiniCard(label: String, price: Double?, modifier: Modifier = Modifier) {
-    Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(12.dp)) {
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(price?.let { "%,.2f".format(it) } ?: "--", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(if (price == null) "等待行情" else "实时快照", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            Text(stringResource(if (price == null) R.string.waiting_quotes else R.string.live_snapshot), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }

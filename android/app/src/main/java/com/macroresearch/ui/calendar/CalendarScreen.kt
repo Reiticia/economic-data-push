@@ -1,5 +1,9 @@
 package com.macroresearch.ui.calendar
 
+import androidx.compose.ui.res.stringResource
+import com.macroresearch.R
+import com.macroresearch.ui.common.appLocale
+import com.macroresearch.ui.common.dateLabel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,11 +40,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.ui.CalendarViewModel
 import com.macroresearch.ui.common.EventCard
+import com.macroresearch.ui.common.countryLabel
+import com.macroresearch.ui.common.flag
+import com.macroresearch.ui.common.importanceLabel
 import com.macroresearch.ui.theme.Upcoming
 import com.macroresearch.ui.viewModelFactory
 import java.time.LocalDate
 import java.time.format.TextStyle
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,30 +63,30 @@ fun CalendarScreen(repository: MacroRepository, padding: PaddingValues, onEvent:
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text("日历", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("${state.date.year}年${state.date.monthValue}月", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.nav_calendar), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(dateLabel(state.date, monthOnly = true), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { showFilters = true }) { Icon(Icons.Outlined.FilterAlt, "筛选", tint = MaterialTheme.colorScheme.primary) }
+                IconButton(onClick = { showFilters = true }) { Icon(Icons.Outlined.FilterAlt, stringResource(R.string.filter), tint = MaterialTheme.colorScheme.primary) }
             }
         }
         item { DateSelector(state.date, vm::selectDate) }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { FilterChip(selected = 3 in state.importance, onClick = { showFilters = true }, label = { Text("🔴 High") }) }
-                item { FilterChip(selected = 2 in state.importance, onClick = { showFilters = true }, label = { Text("🟠 Medium") }) }
-                item { FilterChip(selected = "United States" in state.countries, onClick = { showFilters = true }, label = { Text("🇺🇸 US") }) }
-                item { FilterChip(selected = "Euro Area" in state.countries, onClick = { showFilters = true }, label = { Text("🇪🇺 EU") }) }
+                item { FilterChip(selected = 3 in state.importance, onClick = { showFilters = true }, leadingIcon = { Text("●", color = Upcoming) }, label = { Text(importanceLabel(3)) }) }
+                item { FilterChip(selected = 2 in state.importance, onClick = { showFilters = true }, leadingIcon = { Text("●", color = MaterialTheme.colorScheme.primary) }, label = { Text(importanceLabel(2)) }) }
+                item { FilterChip(selected = "United States" in state.countries, onClick = { showFilters = true }, label = { Text("🇺🇸 ${countryLabel("United States")}") }) }
+                item { FilterChip(selected = "Euro Area" in state.countries, onClick = { showFilters = true }, label = { Text("🇪🇺 ${countryLabel("Euro Area")}") }) }
             }
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${state.date.monthValue}月${state.date.dayOfMonth}日 · ${state.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.CHINA)}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text("${state.filtered.size} 个事件", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(dateLabel(state.date), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.event_count, state.filtered.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        state.error?.let { item { Text("加载失败：$it", color = MaterialTheme.colorScheme.error) } }
+        state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
         if (!state.loading && state.filtered.isEmpty()) item {
-            Card { Text("当前筛选下没有事件", Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Card { Text(stringResource(R.string.no_filtered_events), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         items(state.filtered, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
     }
@@ -111,7 +117,7 @@ private fun DateSelector(selected: LocalDate, onSelect: (LocalDate) -> Unit) {
                 onClick = { onSelect(date) },
                 label = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.CHINA))
+                        Text(date.dayOfWeek.getDisplayName(TextStyle.SHORT, appLocale()))
                         Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium)
                     }
                 },
@@ -130,33 +136,33 @@ private fun CalendarFilterSheet(
 ) {
     var importance by remember { mutableStateOf(initialImportance) }
     var countries by remember { mutableStateOf(initialCountries) }
-    val countryOptions = listOf("United States" to "🇺🇸 US", "Euro Area" to "🇪🇺 EU", "China" to "🇨🇳 CN", "Japan" to "🇯🇵 JP", "United Kingdom" to "🇬🇧 UK")
+    val countryOptions = listOf("United States", "Euro Area", "China", "Japan", "United Kingdom")
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("筛选", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.filter), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             HorizontalDivider()
-            Text("重要性", fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(3 to "High", 2 to "Medium", 1 to "Low").forEach { (level, label) ->
+            Text(stringResource(R.string.importance), fontWeight = FontWeight.Bold)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf(3, 2, 1)) { level ->
                     FilterChip(
                         selected = level in importance,
                         onClick = { importance = if (level in importance) importance - level else importance + level },
-                        label = { Text(label) },
+                        label = { Text(importanceLabel(level)) },
                     )
                 }
             }
-            Text("国家 / 地区", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.countries_regions), fontWeight = FontWeight.Bold)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(countryOptions) { (country, label) ->
+                items(countryOptions) { country ->
                     FilterChip(
                         selected = country in countries,
                         onClick = { countries = if (country in countries) countries - country else countries + country },
-                        label = { Text(label) },
+                        label = { Text("${flag(country)} ${countryLabel(country)}") },
                     )
                 }
             }
-            Text("宏观信号使用紫/青色，资产涨跌使用红/绿色。", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            Button(onClick = { onApply(importance, countries) }, modifier = Modifier.fillMaxWidth(), enabled = importance.isNotEmpty()) { Text("应用") }
+            Text(stringResource(R.string.color_legend), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Button(onClick = { onApply(importance, countries) }, modifier = Modifier.fillMaxWidth(), enabled = importance.isNotEmpty()) { Text(stringResource(R.string.apply)) }
         }
     }
 }

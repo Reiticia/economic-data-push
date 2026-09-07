@@ -3,35 +3,27 @@ package com.macroresearch.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-val Hawkish = Color(0xFFB69CFF)
-val Dovish = Color(0xFF62D8D1)
-val Upcoming = Color(0xFFFFB86B)
-val AssetUp = Color(0xFF5DD39E)
-val AssetDown = Color(0xFFFF6B7A)
+private val LocalResearchColors = staticCompositionLocalOf { LightResearchColors }
 
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF5794FF),
-    secondary = Dovish,
-    tertiary = Hawkish,
-    background = Color(0xFF07111C),
-    surface = Color(0xFF0C1825),
-    surfaceVariant = Color(0xFF132131),
-    outline = Color(0xFF26384C),
-)
-
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF365E9D),
-    secondary = Color(0xFF006B67),
-    tertiary = Color(0xFF654FA3),
-)
+val Hawkish: Color
+    @Composable @ReadOnlyComposable get() = LocalResearchColors.current.hawkish
+val Dovish: Color
+    @Composable @ReadOnlyComposable get() = LocalResearchColors.current.dovish
+val Upcoming: Color
+    @Composable @ReadOnlyComposable get() = LocalResearchColors.current.upcoming
+val AssetUp: Color
+    @Composable @ReadOnlyComposable get() = LocalResearchColors.current.assetUp
+val AssetDown: Color
+    @Composable @ReadOnlyComposable get() = LocalResearchColors.current.assetDown
 
 @Composable
 fun MacroTheme(
@@ -47,5 +39,9 @@ fun MacroTheme(
         darkTheme -> DarkColors
         else -> LightColors
     }
-    MaterialTheme(colorScheme = colors, content = content)
+    CompositionLocalProvider(
+        LocalResearchColors provides if (darkTheme) DarkResearchColors else LightResearchColors,
+    ) {
+        MaterialTheme(colorScheme = colors, content = content)
+    }
 }

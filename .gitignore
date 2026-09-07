@@ -2,6 +2,8 @@
 /backend/data
 /.env
 /backend/config.local.toml
+/.pi
+/android/.kotlin
 
 # Android / IntelliJ
 /android/.gradle

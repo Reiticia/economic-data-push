@@ -1,5 +1,8 @@
 package com.macroresearch.ui
 
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
+import com.macroresearch.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Home
@@ -7,13 +10,16 @@ import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -31,16 +37,16 @@ import com.macroresearch.ui.settings.SettingsScreen
 
 private data class TopDestination(
     val route: String,
-    val label: String,
+    @StringRes val label: Int,
     val icon: ImageVector,
 )
 
 private val destinations = listOf(
-    TopDestination("home", "首页", Icons.Outlined.Home),
-    TopDestination("calendar", "日历", Icons.Outlined.CalendarMonth),
-    TopDestination("market", "市场", Icons.Outlined.QueryStats),
-    TopDestination("history", "历史", Icons.Outlined.Insights),
-    TopDestination("settings", "设置", Icons.Outlined.Settings),
+    TopDestination("home", R.string.nav_home, Icons.Outlined.Home),
+    TopDestination("calendar", R.string.nav_calendar, Icons.Outlined.CalendarMonth),
+    TopDestination("market", R.string.nav_market, Icons.Outlined.QueryStats),
+    TopDestination("history", R.string.nav_history, Icons.Outlined.Insights),
+    TopDestination("settings", R.string.nav_settings, Icons.Outlined.Settings),
 )
 
 @Composable
@@ -55,13 +61,23 @@ fun MacroApp(repository: MacroRepository) {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                ) {
                     destinations.forEach { destination ->
                         val selected = currentDestination?.hierarchy?.any {
                             it.route == destination.route
                         } == true
                         NavigationBarItem(
                             selected = selected,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                             onClick = {
                                 navController.navigate(destination.route) {
                                     popUpTo(navController.graph.findStartDestination().id) {
@@ -71,8 +87,8 @@ fun MacroApp(repository: MacroRepository) {
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(destination.icon, destination.label) },
-                            label = { Text(destination.label) },
+                            icon = { Icon(destination.icon, stringResource(destination.label)) },
+                            label = { Text(stringResource(destination.label)) },
                         )
                     }
                 }

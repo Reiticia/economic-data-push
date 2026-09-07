@@ -1,5 +1,7 @@
 package com.macroresearch.ui.history
 
+import androidx.compose.ui.res.stringResource
+import com.macroresearch.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -44,12 +46,12 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("历史研究", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text("从历史中发现规律", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.history_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.history_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(null to "全部", "inflation" to "CPI / PCE", "employment" to "就业").forEach { (category, label) ->
+                listOf(null to stringResource(R.string.all), "inflation" to stringResource(R.string.category_inflation), "employment" to stringResource(R.string.category_employment)).forEach { (category, label) ->
                     FilterChip(
                         selected = selected == category,
                         onClick = { selected = category; vm.refresh(category) },
@@ -59,11 +61,11 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
             }
         }
         item { SummaryCards(events) }
-        state.error?.let { item { Text("加载失败：$it", color = MaterialTheme.colorScheme.error) } }
+        state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("历史记录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("最近 ${events.size} 次", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.history_records), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.recent_count, events.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         items(events, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
@@ -76,9 +78,9 @@ private fun SummaryCards(events: List<EconomicEvent>) {
     val below = events.count { (it.surprise()?.signum() ?: 0) < 0 }
     val equal = events.count { it.actual != null && it.consensus != null && it.surprise()?.signum() == 0 }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SummaryCard("Actual >\nConsensus", above, AssetUp, Modifier.weight(1f))
-        SummaryCard("Actual <\nConsensus", below, AssetDown, Modifier.weight(1f))
-        SummaryCard("Equal", equal, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
+        SummaryCard(stringResource(R.string.above_consensus), above, AssetUp, Modifier.weight(1f))
+        SummaryCard(stringResource(R.string.below_consensus), below, AssetDown, Modifier.weight(1f))
+        SummaryCard(stringResource(R.string.equal_consensus), equal, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
     }
 }
 
@@ -87,7 +89,7 @@ private fun SummaryCard(label: String, count: Int, color: androidx.compose.ui.gr
     Card(modifier) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = color)
-            Text("${count}次", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.occurrence_count, count), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }
     }
 }

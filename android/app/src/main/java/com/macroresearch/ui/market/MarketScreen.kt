@@ -1,5 +1,7 @@
 package com.macroresearch.ui.market
 
+import androidx.compose.ui.res.stringResource
+import com.macroresearch.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,15 +17,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.macroresearch.ui.common.assetLabel
 
 @Composable
 fun MarketScreen(padding: PaddingValues) {
     val groups = listOf(
-        "风险资产" to listOf("NASDAQ", "S&P 500"),
-        "贵金属" to listOf("Gold", "Silver"),
-        "美元与外汇" to listOf("DXY", "EUR/USD"),
-        "美债" to listOf("US 2Y", "US 10Y"),
-        "Crypto" to listOf("BTC", "ETH"),
+        R.string.risk_assets to listOf("NASDAQ", "S&P 500"),
+        R.string.precious_metals to listOf("Gold", "Silver"),
+        R.string.dollar_fx to listOf("DXY", "EUR/USD"),
+        R.string.treasuries to listOf("US 2Y", "US 10Y"),
+        R.string.crypto to listOf("BTC", "ETH"),
     )
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -31,18 +34,18 @@ fun MarketScreen(padding: PaddingValues) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("市场", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text("宏观相关资产", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.nav_market), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.market_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         groups.forEach { (title, symbols) ->
             item {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     symbols.forEach { symbol ->
                         Card {
                             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(symbol, fontWeight = FontWeight.Bold)
-                                Text("等待实时市场 API", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                Text(assetLabel(symbol), fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.waiting_market_api), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -50,7 +53,7 @@ fun MarketScreen(padding: PaddingValues) {
             }
         }
         item {
-            Text("事件窗口内的实时价格和涨跌已在事件详情与分析页面展示。独立市场页将在后端提供当前报价接口后自动接入。", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.market_api_note), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
