@@ -1,0 +1,13 @@
+/backend/target
+/backend/data
+/.env
+/backend/config.local.toml
+
+# Android / IntelliJ
+/android/.gradle
+/android/.idea
+/android/local.properties
+/android/**/build
+/android/.sdk-validation
+/android/.sdk-extract
+/android/android-command-tools.zip

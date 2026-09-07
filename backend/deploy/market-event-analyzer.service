@@ -1,0 +1,16 @@
+[Unit]
+Description=Market Event Analyzer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=market
+WorkingDirectory=/opt/market-analyzer
+ExecStart=/opt/market-analyzer/market-event-analyzer
+Restart=always
+RestartSec=5
+Environment=RUST_LOG=market_event_analyzer=info,tower_http=info
+
+[Install]
+WantedBy=multi-user.target

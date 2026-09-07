@@ -1,0 +1,183 @@
+package com.macroresearch.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.macroresearch.data.MacroRepository
+import com.macroresearch.data.model.AnalysisReport
+import com.macroresearch.data.model.EconomicEvent
+import com.macroresearch.data.model.EventDetailResponse
+import com.macroresearch.data.model.MarketResponse
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+
+data class LoadState<T>(
+    val value: T? = null,
+    val loading: Boolean = true,
+    val error: String? = null,
+)
+
+class HomeViewModel(private val repository: MacroRepository) : ViewModel() {
+    val events: StateFlow<List<EconomicEvent>> = repository.observeUpcoming()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val _refresh = MutableStateFlow(LoadState<Unit>())
+    val refresh = _refresh.asStateFlow()
+    private val _market = MutableStateFlow<MarketResponse?>(null)
+    val market = _market.asStateFlow()
+
+    init { refresh() }
+
+    fun refresh() = viewModelScope.launch {
+        _refresh.value = LoadState(loading = true)
+        runCatching { repository.refreshUpcoming() }
+            .onSuccess { _refresh.value = LoadState(Unit, loading = false) }
+            .onFailure { _refresh.value = LoadState(loading = false, error = it.message) }
+    }
+
+    fun loadMarket(eventId: Long) = viewModelScope.launch {
+        _market.value = runCatching { repository.market(eventId) }.getOrNull()
+    }
+}
+
+data class CalendarState(
+    val date: LocalDate = LocalDate.now(),
+    val events: List<EconomicEvent> = emptyList(),
+    val importance: Set<Int> = setOf(2, 3),
+    val countries: Set<String> = setOf("United States", "Euro Area", "China", "Japan"),
+    val loading: Boolean = true,
+    val error: String? = null,
+) {
+    val filtered: List<EconomicEvent> get() = events.filter {
+        it.importance in importance && (countries.isEmpty() || it.country in countries)
+    }
+}
+
+class CalendarViewModel(private val repository: MacroRepository) : ViewModel() {
+    private val _state = MutableStateFlow(CalendarState())
+    val state = _state.asStateFlow()
+
+    init { selectDate(LocalDate.now()) }
+
+    fun selectDate(date: LocalDate) {
+        _state.value = _state.value.copy(date = date, loading = true, error = null)
+        viewModelScope.launch {
+            runCatching { repository.calendar(date) }
+                .onSuccess { _state.value = _state.value.copy(events = it, loading = false) }
+                .onFailure { _state.value = _state.value.copy(loading = false, error = it.message) }
+        }
+    }
+
+    fun applyFilters(importance: Set<Int>, countries: Set<String>) {
+        _state.value = _state.value.copy(importance = importance, countries = countries)
+    }
+}
+
+data class EventDetailState(
+    val detail: EventDetailResponse? = null,
+    val market: MarketResponse? = null,
+    val followed: Boolean = false,
+    val loading: Boolean = true,
+    val error: String? = null,
+)
+
+class EventDetailViewModel(
+    private val id: Long,
+    private val repository: MacroRepository,
+) : ViewModel() {
+    private val _state = MutableStateFlow(EventDetailState())
+    val state = _state.asStateFlow()
+
+    init {
+        refresh()
+        viewModelScope.launch {
+            repository.observeFollowed(id).collect { followed ->
+                _state.value = _state.value.copy(followed = followed)
+            }
+        }
+        viewModelScope.launch {
+            repository.socketEvents.collect { event ->
+                if (event.eventId == id) refresh()
+            }
+        }
+    }
+
+    fun refresh() = viewModelScope.launch {
+        _state.value = _state.value.copy(loading = true, error = null)
+        runCatching {
+            val detail = async { repository.event(id) }
+            val market = async { runCatching { repository.market(id) }.getOrNull() }
+            detail.await() to market.await()
+        }.onSuccess { (detail, market) ->
+            _state.value = _state.value.copy(detail = detail, market = market, loading = false)
+        }.onFailure {
+            _state.value = _state.value.copy(loading = false, error = it.message)
+        }
+    }
+
+    fun toggleFollowed() = viewModelScope.launch {
+        repository.setFollowed(id, !_state.value.followed)
+    }
+}
+
+data class AnalysisState(
+    val event: EconomicEvent? = null,
+    val report: AnalysisReport? = null,
+    val market: MarketResponse? = null,
+    val loading: Boolean = true,
+    val error: String? = null,
+)
+
+class AnalysisViewModel(
+    private val id: Long,
+    private val repository: MacroRepository,
+) : ViewModel() {
+    private val _state = MutableStateFlow(AnalysisState())
+    val state = _state.asStateFlow()
+
+    init { refresh() }
+
+    fun refresh() = viewModelScope.launch {
+        _state.value = AnalysisState(loading = true)
+        val eventResult = runCatching { repository.event(id).event }
+        if (eventResult.isFailure) {
+            _state.value = AnalysisState(loading = false, error = eventResult.exceptionOrNull()?.message)
+            return@launch
+        }
+        val report = async { runCatching { repository.analysis(id) } }
+        val market = async { runCatching { repository.market(id) } }
+        val reportResult = report.await()
+        _state.value = AnalysisState(
+            event = eventResult.getOrNull(),
+            report = reportResult.getOrNull(),
+            market = market.await().getOrNull(),
+            loading = false,
+            error = reportResult.exceptionOrNull()?.message,
+        )
+    }
+}
+
+class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
+    private val _state = MutableStateFlow(LoadState<List<EconomicEvent>>())
+    val state = _state.asStateFlow()
+
+    init { refresh() }
+
+    fun refresh(category: String? = null) = viewModelScope.launch {
+        _state.value = LoadState(loading = true)
+        runCatching { repository.history(category = category) }
+            .onSuccess { _state.value = LoadState(it, loading = false) }
+            .onFailure { _state.value = LoadState(loading = false, error = it.message) }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun <T : ViewModel> viewModelFactory(create: () -> T): ViewModelProvider.Factory =
+    object : ViewModelProvider.Factory {
+        override fun <R : ViewModel> create(modelClass: Class<R>): R = create() as R
+    }

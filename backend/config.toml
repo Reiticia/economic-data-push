@@ -1,0 +1,25 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[database]
+url = "sqlite://data/market.db"
+
+[calendar]
+base_url = "https://tradingeconomics.com/calendar"
+sync_days = 7
+minimum_importance = 3
+
+[scheduler]
+calendar_sync_seconds = 43200
+watch_scan_seconds = 15
+watch_before_minutes = 5
+release_timeout_minutes = 30
+market_poll_seconds = 15
+market_collect_after_minutes = 60
+
+[market]
+yahoo_base_url = "https://query1.finance.yahoo.com/v8/finance/chart"
+binance_base_url = "https://api.binance.com/api/v3"
+symbols = ["gold", "nasdaq100", "dxy", "us10y", "bitcoin"]
+
