@@ -23,9 +23,11 @@ class MacroRepository(
     private val dao: EventDao,
     private val socket: MacroSocket,
     private val countryPreferences: CountryPreferences,
+    private val marketPreferences: MarketPreferences,
 ) {
     val socketEvents: SharedFlow<SocketEvent> = socket.events
     val selectedCountries: StateFlow<Set<String>> = countryPreferences.selectedCountries
+    val selectedMarkets: StateFlow<List<String>> = marketPreferences.selectedMarkets
 
     fun observeUpcoming(): Flow<List<EconomicEvent>> =
         dao.observeUpcoming(Instant.now().toString()).map { events ->
@@ -79,6 +81,9 @@ class MacroRepository(
 
     fun setCountryEnabled(country: String, enabled: Boolean) =
         countryPreferences.setCountryEnabled(country, enabled)
+
+    fun setMarketEnabled(market: String, enabled: Boolean) =
+        marketPreferences.setMarketEnabled(market, enabled)
 
     fun connectSocket() = socket.connect()
     fun closeSocket() = socket.close()

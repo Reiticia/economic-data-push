@@ -28,6 +28,7 @@ import com.macroresearch.R
 import com.macroresearch.BuildConfig
 import com.macroresearch.data.CountryPreferences
 import com.macroresearch.data.MacroRepository
+import com.macroresearch.data.MarketPreferences
 import com.macroresearch.ui.common.assetLabel
 import com.macroresearch.ui.common.countryLabel
 
@@ -35,7 +36,8 @@ import com.macroresearch.ui.common.countryLabel
 fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
     val selectedCountries by repository.selectedCountries.collectAsStateWithLifecycle()
     val countries = CountryPreferences.SUPPORTED_COUNTRIES.associateWith { it in selectedCountries }
-    var markets by rememberSaveable { mutableStateOf(mapOf("Gold" to true, "DXY" to true, "US 2Y" to true, "US 10Y" to true, "NASDAQ" to true, "Bitcoin" to true)) }
+    val selectedMarkets by repository.selectedMarkets.collectAsStateWithLifecycle()
+    val markets = MarketPreferences.SUPPORTED_MARKETS.associateWith { it in selectedMarkets }
     var releaseNotifications by rememberSaveable { mutableStateOf(true) }
     var reactionNotifications by rememberSaveable { mutableStateOf(true) }
     Column(
@@ -61,8 +63,8 @@ fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
                 }
             }
             item {
-                SettingsGroup(stringResource(R.string.market_tracking), markets, { assetLabel(it) }) { key, checked ->
-                    markets = markets + (key to checked)
+                MarketSettingsGroup(markets) { key, checked ->
+                    repository.setMarketEnabled(key, checked)
                 }
             }
             item {
@@ -101,6 +103,36 @@ private fun SettingsGroup(title: String, values: Map<String, Boolean>, labelFor:
                     Text(labelFor(label))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MarketSettingsGroup(values: Map<String, Boolean>, onChange: (String, Boolean) -> Unit) {
+    val selectedCount = values.count { it.value }
+    Card {
+        Column(Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.market_tracking), fontWeight = FontWeight.Bold)
+            values.forEach { (market, checked) ->
+                val enabled = if (checked) {
+                    selectedCount > MarketPreferences.MIN_SELECTIONS
+                } else {
+                    selectedCount < MarketPreferences.MAX_SELECTIONS
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = checked,
+                        onCheckedChange = { onChange(market, it) },
+                        enabled = enabled,
+                    )
+                    Text(assetLabel(market))
+                }
+            }
+            Text(
+                stringResource(R.string.market_selection_note, selectedCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

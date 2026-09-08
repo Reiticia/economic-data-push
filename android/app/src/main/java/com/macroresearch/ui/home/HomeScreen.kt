@@ -67,6 +67,7 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
     val events by vm.events.collectAsStateWithLifecycle()
     val refresh by vm.refresh.collectAsStateWithLifecycle()
     val market by vm.market.collectAsStateWithLifecycle()
+    val selectedMarkets by repository.selectedMarkets.collectAsStateWithLifecycle()
     val now = Instant.now()
     val next = events.firstOrNull { it.importance == 3 && runCatching { Instant.parse(it.eventTime) > now }.getOrDefault(false) }
         ?: events.firstOrNull { runCatching { Instant.parse(it.eventTime) > now }.getOrDefault(false) }
@@ -99,7 +100,7 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
         }
 
         if (next != null) NextEventCard(next) { onEvent(next.id) }
-        MarketOverview(market?.snapshots.orEmpty())
+        MarketOverview(market?.snapshots.orEmpty(), selectedMarkets)
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(stringResource(R.string.today_events), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -120,18 +121,28 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
 }
 
 @Composable
-private fun MarketOverview(snapshots: List<MarketSnapshot>) {
+private fun MarketOverview(snapshots: List<MarketSnapshot>, selectedMarkets: List<String>) {
     val latest = snapshots.groupBy { it.symbol }
         .mapValues { (_, values) -> values.maxByOrNull { it.timestamp } }
+    val rows = marketOverviewRows(selectedMarkets)
     Column {
         Text(stringResource(R.string.market_overview), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("nasdaq100", "dxy", "gold").forEach { symbol ->
-                MarketMiniCard(assetLabel(symbol), latest[symbol]?.price, Modifier.weight(1f))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            rows.forEach { rowMarkets ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowMarkets.forEach { symbol ->
+                        MarketMiniCard(assetLabel(symbol), latest[symbol]?.price, Modifier.weight(1f))
+                    }
+                }
             }
         }
     }
+}
+
+internal fun marketOverviewRows(selectedMarkets: List<String>): List<List<String>> {
+    val columns = if (selectedMarkets.size == 4) 2 else selectedMarkets.size.coerceAtLeast(1)
+    return selectedMarkets.chunked(columns)
 }
 
 @Composable
