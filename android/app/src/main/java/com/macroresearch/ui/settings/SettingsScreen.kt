@@ -38,43 +38,51 @@ fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
     var markets by rememberSaveable { mutableStateOf(mapOf("Gold" to true, "DXY" to true, "US 2Y" to true, "US 10Y" to true, "NASDAQ" to true, "Bitcoin" to true)) }
     var releaseNotifications by rememberSaveable { mutableStateOf(true) }
     var reactionNotifications by rememberSaveable { mutableStateOf(true) }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
+        Column {
             Text(stringResource(R.string.nav_settings), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(stringResource(R.string.settings_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        item { LanguageSettings() }
-        item {
-            SettingsGroup(stringResource(R.string.countries_regions), countries, { countryLabel(it) }) { key, checked ->
-                repository.setCountryEnabled(key, checked)
-            }
-        }
-        item {
-            SettingsGroup(stringResource(R.string.market_tracking), markets, { assetLabel(it) }) { key, checked ->
-                markets = markets + (key to checked)
-            }
-        }
-        item {
-            Card {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.notifications), fontWeight = FontWeight.Bold)
-                    ToggleRow(stringResource(R.string.release_notifications), releaseNotifications) { releaseNotifications = it }
-                    ToggleRow(stringResource(R.string.reaction_notifications), reactionNotifications) { reactionNotifications = it }
-                    Text(stringResource(R.string.notification_permission_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { LanguageSettings() }
+            item {
+                SettingsGroup(stringResource(R.string.countries_regions), countries, { countryLabel(it) }) { key, checked ->
+                    repository.setCountryEnabled(key, checked)
                 }
             }
-        }
-        if (BuildConfig.DEBUG) {
+            item {
+                SettingsGroup(stringResource(R.string.market_tracking), markets, { assetLabel(it) }) { key, checked ->
+                    markets = markets + (key to checked)
+                }
+            }
             item {
                 Card {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(stringResource(R.string.server), fontWeight = FontWeight.Bold)
-                        Text(BuildConfig.API_BASE_URL, color = MaterialTheme.colorScheme.primary)
-                        Text(stringResource(R.string.server_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.notifications), fontWeight = FontWeight.Bold)
+                        ToggleRow(stringResource(R.string.release_notifications), releaseNotifications) { releaseNotifications = it }
+                        ToggleRow(stringResource(R.string.reaction_notifications), reactionNotifications) { reactionNotifications = it }
+                        Text(stringResource(R.string.notification_permission_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (BuildConfig.DEBUG) {
+                item {
+                    Card {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(stringResource(R.string.server), fontWeight = FontWeight.Bold)
+                            Text(BuildConfig.API_BASE_URL, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.server_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

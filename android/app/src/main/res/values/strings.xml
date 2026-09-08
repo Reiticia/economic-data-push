@@ -27,12 +27,16 @@
     <string name="surprise_below">↓ Below consensus %1$s</string>
     <string name="surprise_equal">→ In line with consensus</string>
     <string name="filter">Filters</string>
+    <string name="choose_date">Choose date</string>
+    <string name="previous_week">Previous week</string>
+    <string name="next_week">Next week</string>
     <string name="load_failed">Unable to load: %1$s</string>
     <string name="no_filtered_events">No events match these filters</string>
     <string name="importance">Importance</string>
     <string name="countries_regions">Countries / regions</string>
     <string name="color_legend">Violet: hawkish · Blue: dovish. Green: up · Red: down. Gold highlights key events.</string>
     <string name="apply">Apply</string>
+    <string name="cancel">Cancel</string>
     <string name="event_detail">Event details</string>
     <string name="back">Back</string>
     <string name="follow">Follow</string>

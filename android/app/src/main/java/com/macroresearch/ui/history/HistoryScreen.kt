@@ -41,40 +41,46 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
     val selected by vm.category.collectAsStateWithLifecycle()
     val hasMore by vm.hasMore.collectAsStateWithLifecycle()
     val events = state.value.orEmpty()
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
+        Column {
             Text(stringResource(R.string.history_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(stringResource(R.string.history_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(null to stringResource(R.string.all), "inflation" to stringResource(R.string.category_inflation), "employment" to stringResource(R.string.category_employment)).forEach { (category, label) ->
-                    FilterChip(
-                        selected = selected == category,
-                        onClick = { vm.refresh(category) },
-                        label = { Text(label) },
-                    )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(null to stringResource(R.string.all), "inflation" to stringResource(R.string.category_inflation), "employment" to stringResource(R.string.category_employment)).forEach { (category, label) ->
+                FilterChip(
+                    selected = selected == category,
+                    onClick = { vm.refresh(category) },
+                    label = { Text(label) },
+                )
+            }
+        }
+        TextButton(onClick = { vm.refresh() }, enabled = !state.loading) {
+            Text(stringResource(R.string.history_refresh))
+        }
+        SummaryCards(events)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(stringResource(R.string.history_records), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.recent_count, events.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 4.dp),
+        ) {
+            state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
+            items(events, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
+            if (state.loading) item { CircularProgressIndicator() }
+            if (hasMore && !state.loading) item {
+                Button(onClick = vm::loadMore, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(if (state.error == null) R.string.history_load_more else R.string.retry))
                 }
-            }
-        }
-        item { TextButton(onClick = { vm.refresh() }, enabled = !state.loading) { Text(stringResource(R.string.history_refresh)) } }
-        item { SummaryCards(events) }
-        state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(R.string.history_records), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.recent_count, events.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        items(events, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
-        if (state.loading) item { CircularProgressIndicator() }
-        if (hasMore && !state.loading) item {
-            Button(onClick = vm::loadMore, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(if (state.error == null) R.string.history_load_more else R.string.retry))
             }
         }
     }

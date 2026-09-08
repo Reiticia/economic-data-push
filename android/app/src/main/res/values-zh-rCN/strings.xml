@@ -26,12 +26,16 @@
     <string name="surprise_below">↓ 低于预期 %1$s</string>
     <string name="surprise_equal">→ 符合预期</string>
     <string name="filter">筛选</string>
+    <string name="choose_date">选择日期</string>
+    <string name="previous_week">上一周</string>
+    <string name="next_week">下一周</string>
     <string name="load_failed">加载失败：%1$s</string>
     <string name="no_filtered_events">当前筛选下没有事件</string>
     <string name="importance">重要性</string>
     <string name="countries_regions">国家 / 地区</string>
     <string name="color_legend">紫色偏鹰 · 蓝色偏鸽；绿色上涨 · 红色下跌；金色标记重要事件。</string>
     <string name="apply">应用</string>
+    <string name="cancel">取消</string>
     <string name="event_detail">事件详情</string>
     <string name="back">返回</string>
     <string name="follow">关注</string>
