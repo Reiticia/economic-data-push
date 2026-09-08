@@ -3,6 +3,7 @@ package com.macroresearch
 import android.app.Application
 import androidx.room.Room
 import com.google.gson.Gson
+import com.macroresearch.data.CountryPreferences
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.local.MacroDatabase
 import com.macroresearch.data.remote.MacroApi
@@ -46,7 +47,7 @@ class MacroApplication : Application() {
             .addMigrations(MacroDatabase.MIGRATION_1_2)
             .build()
         val socket = MacroSocket(http, BuildConfig.WS_URL, gson)
-        repository = MacroRepository(api, database.eventDao(), socket)
+        repository = MacroRepository(api, database.eventDao(), socket, CountryPreferences(this))
         repository.connectSocket()
 
         val notifications = NotificationCenter(this)

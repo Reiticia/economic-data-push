@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.model.EconomicEvent
+import com.macroresearch.data.model.MarketSnapshot
 import com.macroresearch.ui.HomeViewModel
 import com.macroresearch.ui.common.EventCard
 import com.macroresearch.ui.common.ImportanceDots
@@ -73,50 +74,61 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
         runCatching { Instant.parse(it.eventTime).atZone(ZoneId.systemDefault()).toLocalDate() == LocalDate.now() }
             .getOrDefault(false)
     }
-    LaunchedEffect(next?.id) { next?.let { vm.loadMarket(it.id) } }
+    LaunchedEffect(next?.id) { vm.loadMarket(next?.id) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column {
-                    Text(
-                        buildAnnotatedString {
-                            append("Mac")
-                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("ro") }
-                        },
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(next?.localDate() ?: stringResource(R.string.research_tagline), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Icon(Icons.Outlined.Notifications, stringResource(R.string.notifications), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column {
+                Text(
+                    buildAnnotatedString {
+                        append("Mac")
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("ro") }
+                    },
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(next?.localDate() ?: stringResource(R.string.research_tagline), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Icon(Icons.Outlined.Notifications, stringResource(R.string.notifications), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (next != null) item { NextEventCard(next, { onEvent(next.id) }) }
-        if (refresh.loading && events.isEmpty()) item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+
+        if (next != null) NextEventCard(next) { onEvent(next.id) }
+        MarketOverview(market?.snapshots.orEmpty())
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(stringResource(R.string.today_events), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.event_count, today.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        refresh.error?.let { message -> item { Text(stringResource(R.string.offline_cache, message), color = Upcoming) } }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(R.string.today_events), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.event_count, today.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 4.dp),
+        ) {
+            if (refresh.loading && events.isEmpty()) item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
             }
+            refresh.error?.let { message -> item { Text(stringResource(R.string.offline_cache, message), color = Upcoming) } }
+            items(today, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
         }
-        items(today, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
-        item {
-            Text(stringResource(R.string.market_overview), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            val latest = market?.snapshots.orEmpty().groupBy { it.symbol }
-                .mapValues { (_, values) -> values.maxByOrNull { it.timestamp } }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("nasdaq100", "dxy", "gold").forEach { symbol ->
-                    MarketMiniCard(assetLabel(symbol), latest[symbol]?.price, Modifier.weight(1f))
-                }
+    }
+}
+
+@Composable
+private fun MarketOverview(snapshots: List<MarketSnapshot>) {
+    val latest = snapshots.groupBy { it.symbol }
+        .mapValues { (_, values) -> values.maxByOrNull { it.timestamp } }
+    Column {
+        Text(stringResource(R.string.market_overview), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("nasdaq100", "dxy", "gold").forEach { symbol ->
+                MarketMiniCard(assetLabel(symbol), latest[symbol]?.price, Modifier.weight(1f))
             }
         }
     }

@@ -13,6 +13,7 @@ import com.macroresearch.data.remote.MacroApi
 import com.macroresearch.data.remote.MacroSocket
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.LocalDate
@@ -21,8 +22,10 @@ class MacroRepository(
     private val api: MacroApi,
     private val dao: EventDao,
     private val socket: MacroSocket,
+    private val countryPreferences: CountryPreferences,
 ) {
     val socketEvents: SharedFlow<SocketEvent> = socket.events
+    val selectedCountries: StateFlow<Set<String>> = countryPreferences.selectedCountries
 
     fun observeUpcoming(): Flow<List<EconomicEvent>> =
         dao.observeUpcoming(Instant.now().toString()).map { events ->
@@ -71,6 +74,11 @@ class MacroRepository(
     suspend fun setFollowed(id: Long, followed: Boolean) {
         if (followed) dao.follow(FollowedEventEntity(id)) else dao.unfollow(id)
     }
+
+    fun setCountries(countries: Set<String>) = countryPreferences.setCountries(countries)
+
+    fun setCountryEnabled(country: String, enabled: Boolean) =
+        countryPreferences.setCountryEnabled(country, enabled)
 
     fun connectSocket() = socket.connect()
     fun closeSocket() = socket.close()

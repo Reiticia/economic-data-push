@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.macroresearch.data.CountryPreferences
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.ui.CalendarViewModel
 import com.macroresearch.ui.common.EventCard
@@ -136,7 +137,7 @@ private fun CalendarFilterSheet(
 ) {
     var importance by remember { mutableStateOf(initialImportance) }
     var countries by remember { mutableStateOf(initialCountries) }
-    val countryOptions = listOf("United States", "Euro Area", "China", "Japan", "United Kingdom")
+    val countryOptions = CountryPreferences.SUPPORTED_COUNTRIES
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.filter), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

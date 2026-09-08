@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -26,8 +27,12 @@ data class LoadState<T>(
 )
 
 class HomeViewModel(private val repository: MacroRepository) : ViewModel() {
-    val events: StateFlow<List<EconomicEvent>> = repository.observeUpcoming()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val events: StateFlow<List<EconomicEvent>> = combine(
+        repository.observeUpcoming(),
+        repository.selectedCountries,
+    ) { events, countries ->
+        events.filter { it.country in countries }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val _refresh = MutableStateFlow(LoadState<Unit>())
     val refresh = _refresh.asStateFlow()
     private val _market = MutableStateFlow<MarketResponse?>(null)
@@ -42,8 +47,8 @@ class HomeViewModel(private val repository: MacroRepository) : ViewModel() {
             .onFailure { _refresh.value = LoadState(loading = false, error = it.message) }
     }
 
-    fun loadMarket(eventId: Long) = viewModelScope.launch {
-        _market.value = runCatching { repository.market(eventId) }.getOrNull()
+    fun loadMarket(eventId: Long?) = viewModelScope.launch {
+        _market.value = eventId?.let { runCatching { repository.market(it) }.getOrNull() }
     }
 }
 
@@ -51,20 +56,29 @@ data class CalendarState(
     val date: LocalDate = LocalDate.now(),
     val events: List<EconomicEvent> = emptyList(),
     val importance: Set<Int> = setOf(2, 3),
-    val countries: Set<String> = setOf("United States", "Euro Area", "China", "Japan"),
+    val countries: Set<String> = emptySet(),
     val loading: Boolean = true,
     val error: String? = null,
 ) {
     val filtered: List<EconomicEvent> get() = events.filter {
-        it.importance in importance && (countries.isEmpty() || it.country in countries)
+        it.importance in importance && it.country in countries
     }
 }
 
 class CalendarViewModel(private val repository: MacroRepository) : ViewModel() {
-    private val _state = MutableStateFlow(CalendarState())
+    private val _state = MutableStateFlow(
+        CalendarState(countries = repository.selectedCountries.value),
+    )
     val state = _state.asStateFlow()
 
-    init { selectDate(LocalDate.now()) }
+    init {
+        selectDate(LocalDate.now())
+        viewModelScope.launch {
+            repository.selectedCountries.collect { countries ->
+                _state.value = _state.value.copy(countries = countries)
+            }
+        }
+    }
 
     fun selectDate(date: LocalDate) {
         _state.value = _state.value.copy(date = date, loading = true, error = null)
@@ -77,6 +91,7 @@ class CalendarViewModel(private val repository: MacroRepository) : ViewModel() {
 
     fun applyFilters(importance: Set<Int>, countries: Set<String>) {
         _state.value = _state.value.copy(importance = importance, countries = countries)
+        repository.setCountries(countries)
     }
 }
 
@@ -171,16 +186,26 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
     val category = _category.asStateFlow()
     private val _hasMore = MutableStateFlow(true)
     val hasMore = _hasMore.asStateFlow()
+    private var selectedCountries = repository.selectedCountries.value
+    private var sourceOffset = 0
     private var request: Job? = null
 
-    init { refresh() }
+    init {
+        viewModelScope.launch {
+            repository.selectedCountries.collect { countries ->
+                selectedCountries = countries
+                refresh()
+            }
+        }
+    }
 
     fun refresh(category: String? = _category.value) {
         request?.cancel()
         _category.value = category
-        _hasMore.value = true
+        sourceOffset = 0
+        _hasMore.value = selectedCountries.isNotEmpty()
         _state.value = LoadState(value = emptyList(), loading = false)
-        loadMore()
+        if (selectedCountries.isNotEmpty()) loadMore()
     }
 
     fun loadMore() {
@@ -190,9 +215,16 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
         _state.value = LoadState(existing, loading = true)
         request = viewModelScope.launch {
             try {
-                val page = repository.history(category = category, limit = 100, offset = existing.size)
-                val merged = (existing + page).distinctBy { it.id }
-                _hasMore.value = page.size == 100 && merged.size > existing.size
+                val page = repository.history(
+                    country = selectedCountries.singleOrNull(),
+                    category = category,
+                    limit = 100,
+                    offset = sourceOffset,
+                )
+                sourceOffset += page.size
+                val visiblePage = page.filter { it.country in selectedCountries }
+                val merged = (existing + visiblePage).distinctBy { it.id }
+                _hasMore.value = page.size == 100
                 _state.value = LoadState(merged, loading = false)
             } catch (cancelled: CancellationException) {
                 throw cancelled

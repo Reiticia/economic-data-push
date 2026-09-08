@@ -79,12 +79,17 @@ fun MacroApp(repository: MacroRepository) {
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             ),
                             onClick = {
-                                navController.navigate(destination.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                                val startDestination = navController.graph.findStartDestination()
+                                if (destination.route == startDestination.route) {
+                                    navController.popBackStack(startDestination.id, inclusive = false)
+                                } else {
+                                    navController.navigate(destination.route) {
+                                        popUpTo(startDestination.id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
                                 }
                             },
                             icon = { Icon(destination.icon, stringResource(destination.label)) },
@@ -106,7 +111,7 @@ fun MacroApp(repository: MacroRepository) {
             composable("history") {
                 HistoryScreen(repository, padding) { navController.navigate("event/$it") }
             }
-            composable("settings") { SettingsScreen(padding) }
+            composable("settings") { SettingsScreen(repository, padding) }
             composable("event/{eventId}") { entry ->
                 val id = entry.arguments?.getString("eventId")?.toLongOrNull() ?: return@composable
                 EventDetailScreen(

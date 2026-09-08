@@ -23,14 +23,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.macroresearch.R
 import com.macroresearch.BuildConfig
+import com.macroresearch.data.CountryPreferences
+import com.macroresearch.data.MacroRepository
 import com.macroresearch.ui.common.assetLabel
 import com.macroresearch.ui.common.countryLabel
 
 @Composable
-fun SettingsScreen(padding: PaddingValues) {
-    var countries by rememberSaveable { mutableStateOf(mapOf("United States" to true, "Euro Area" to true, "China" to true, "Japan" to true, "United Kingdom" to false)) }
+fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
+    val selectedCountries by repository.selectedCountries.collectAsStateWithLifecycle()
+    val countries = CountryPreferences.SUPPORTED_COUNTRIES.associateWith { it in selectedCountries }
     var markets by rememberSaveable { mutableStateOf(mapOf("Gold" to true, "DXY" to true, "US 2Y" to true, "US 10Y" to true, "NASDAQ" to true, "Bitcoin" to true)) }
     var releaseNotifications by rememberSaveable { mutableStateOf(true) }
     var reactionNotifications by rememberSaveable { mutableStateOf(true) }
@@ -46,7 +50,7 @@ fun SettingsScreen(padding: PaddingValues) {
         item { LanguageSettings() }
         item {
             SettingsGroup(stringResource(R.string.countries_regions), countries, { countryLabel(it) }) { key, checked ->
-                countries = countries + (key to checked)
+                repository.setCountryEnabled(key, checked)
             }
         }
         item {
