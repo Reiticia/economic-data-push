@@ -71,41 +71,66 @@ impl MarketDataProvider for BinanceProvider {
             Interval::OneHour => "1h",
             Interval::OneDay => "1d",
         };
-        let values: Vec<Vec<serde_json::Value>> = self
-            .client
-            .get(format!("{}/klines", self.base_url))
-            .query(&[
-                ("symbol", ticker.to_owned()),
-                ("interval", interval.to_owned()),
-                ("startTime", start.timestamp_millis().to_string()),
-                ("endTime", end.timestamp_millis().to_string()),
-                ("limit", "1000".to_owned()),
-            ])
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+        let mut cursor = start.timestamp_millis();
+        let mut candles = Vec::new();
+        while cursor < end.timestamp_millis() {
+            let values: Vec<Vec<serde_json::Value>> = self
+                .client
+                .get(format!("{}/klines", self.base_url))
+                .query(&[
+                    ("symbol", ticker.to_owned()),
+                    ("interval", interval.to_owned()),
+                    ("startTime", cursor.to_string()),
+                    ("endTime", (end.timestamp_millis() - 1).to_string()),
+                    ("limit", "1000".to_owned()),
+                ])
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
 
-        let candles = values
-            .into_iter()
-            .filter_map(|row| {
-                let timestamp = row
-                    .first()?
-                    .as_i64()
-                    .and_then(|value| Utc.timestamp_millis_opt(value).single())?;
-                let number = |index: usize| row.get(index)?.as_str()?.parse::<f64>().ok();
-                Some(Candle {
-                    symbol,
-                    timestamp,
-                    open: number(1)?,
-                    high: number(2)?,
-                    low: number(3)?,
-                    close: number(4)?,
-                    volume: number(5),
+            if values.is_empty() {
+                break;
+            }
+            let count = values.len();
+            let last_time = values
+                .last()
+                .and_then(|row| row.first())
+                .and_then(|v| v.as_i64())
+                .ok_or_else(|| AppError::Provider("Binance candle has no timestamp".into()))?;
+            if last_time < cursor {
+                return Err(AppError::Provider(
+                    "Binance pagination did not advance".into(),
+                ));
+            }
+            let page = values
+                .into_iter()
+                .filter_map(|row| {
+                    let timestamp = row
+                        .first()?
+                        .as_i64()
+                        .and_then(|value| Utc.timestamp_millis_opt(value).single())?;
+                    let number = |index: usize| row.get(index)?.as_str()?.parse::<f64>().ok();
+                    Some(Candle {
+                        symbol,
+                        timestamp,
+                        open: number(1)?,
+                        high: number(2)?,
+                        low: number(3)?,
+                        close: number(4)?,
+                        volume: number(5),
+                    })
                 })
-            })
-            .collect::<Vec<_>>();
+                .collect::<Vec<_>>();
+            candles.extend(page);
+            if count < 1000 {
+                break;
+            }
+            cursor = last_time + 1;
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        candles.retain(|c| c.timestamp >= start && c.timestamp < end);
         Ok(candles)
     }
 }

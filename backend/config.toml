@@ -23,3 +23,8 @@ yahoo_base_url = "https://query1.finance.yahoo.com/v8/finance/chart"
 binance_base_url = "https://api.binance.com/api/v3"
 symbols = ["gold", "nasdaq100", "dxy", "us10y", "bitcoin"]
 
+# Only used by the explicit --backfill command. Set TE_API_KEY in the environment.
+[backfill]
+calendar_api_base_url = "https://api.tradingeconomics.com"
+request_delay_ms = 1000
+

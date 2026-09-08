@@ -34,6 +34,7 @@ interface MacroApi {
         @Query("country") country: String? = null,
         @Query("category") category: String? = null,
         @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0,
     ): List<EconomicEvent>
 }
 

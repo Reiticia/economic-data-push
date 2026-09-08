@@ -26,6 +26,7 @@ impl AnalysisRepository {
         let observed = serde_json::to_string(&serde_json::json!({
             "reactions": report.observed_reactions,
             "comparisons": report.comparisons,
+            "historical": report.historical,
         }))
         .map_err(|error| AppError::Internal(error.to_string()))?;
         let now = Utc::now().to_rfc3339();
@@ -90,6 +91,13 @@ impl AnalysisRepository {
             observed_reactions,
             comparisons,
             summary: row.try_get("summary")?,
+            historical: serde_json::from_value(
+                observed_value
+                    .get("historical")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            )
+            .map_err(|error| AppError::Internal(error.to_string()))?,
             created_at: datetime_from_row(&row, "created_at")?,
             updated_at: datetime_from_row(&row, "updated_at")?,
         })

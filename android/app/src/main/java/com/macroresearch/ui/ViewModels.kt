@@ -8,6 +8,8 @@ import com.macroresearch.data.model.AnalysisReport
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.EventDetailResponse
 import com.macroresearch.data.model.MarketResponse
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -165,14 +167,39 @@ class AnalysisViewModel(
 class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
     private val _state = MutableStateFlow(LoadState<List<EconomicEvent>>())
     val state = _state.asStateFlow()
+    private val _category = MutableStateFlow<String?>(null)
+    val category = _category.asStateFlow()
+    private val _hasMore = MutableStateFlow(true)
+    val hasMore = _hasMore.asStateFlow()
+    private var request: Job? = null
 
     init { refresh() }
 
-    fun refresh(category: String? = null) = viewModelScope.launch {
-        _state.value = LoadState(loading = true)
-        runCatching { repository.history(category = category) }
-            .onSuccess { _state.value = LoadState(it, loading = false) }
-            .onFailure { _state.value = LoadState(loading = false, error = it.message) }
+    fun refresh(category: String? = _category.value) {
+        request?.cancel()
+        _category.value = category
+        _hasMore.value = true
+        _state.value = LoadState(value = emptyList(), loading = false)
+        loadMore()
+    }
+
+    fun loadMore() {
+        if (_state.value.loading || !_hasMore.value) return
+        val existing = _state.value.value.orEmpty()
+        val category = _category.value
+        _state.value = LoadState(existing, loading = true)
+        request = viewModelScope.launch {
+            try {
+                val page = repository.history(category = category, limit = 100, offset = existing.size)
+                val merged = (existing + page).distinctBy { it.id }
+                _hasMore.value = page.size == 100 && merged.size > existing.size
+                _state.value = LoadState(merged, loading = false)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _state.value = LoadState(existing, loading = false, error = error.message)
+            }
+        }
     }
 }
 

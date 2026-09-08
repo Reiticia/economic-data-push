@@ -112,5 +112,6 @@ internal fun statusLabelResource(status: String): Int? = when (status) {
     "analyzing" -> R.string.status_analyzing
     "completed" -> R.string.status_completed
     "timeout" -> R.string.status_timeout
+    "historical" -> R.string.status_historical
     else -> null
 }

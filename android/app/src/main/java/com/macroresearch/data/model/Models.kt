@@ -70,6 +70,24 @@ data class AnalysisReport(
     val summary: String,
     val createdAt: String,
     val updatedAt: String,
+    val historical: HistoricalEvidence? = null,
+)
+
+data class HistoricalEvidence(
+    val fetchedAt: String,
+    val revisedDataPossible: Boolean,
+    val coverage: List<HistoricalCoverage>,
+)
+
+data class HistoricalCoverage(
+    val symbol: String,
+    val source: String,
+    val intervalSeconds: Long?,
+    val status: String,
+    val reason: String?,
+    val availableHorizons: List<Int>,
+    val baselineTime: String?,
+    val sampleTimes: Map<String, String>,
 )
 
 data class MarketSnapshot(

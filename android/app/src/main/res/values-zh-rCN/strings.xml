@@ -164,4 +164,22 @@
     <string name="notification_released">%1$s 已公布</string>
     <string name="notification_analysis_title">市场反应分析已完成</string>
     <string name="notification_analysis_body">事件 #%1$d 的 60 分钟分析已生成</string>
+    <string name="historical_pending">历史分析尚未生成</string>
+    <string name="historical_pending_body">历史补采可能仍在运行或已中断。请在服务器继续补采后重新检查，不会用当前价格补齐历史缺口。</string>
+    <string name="status_historical">历史事件</string>
+    <string name="historical_coverage">历史数据覆盖情况</string>
+    <string name="historical_method">涨跌基于真实历史K线收盘价：基准严格早于公布时间，样本不晚于各观察时点。仅展示可获取的窗口，-- 表示缺失而非零涨跌。5分钟K线不能用于计算1分钟反应。</string>
+    <string name="historical_revision_warning">历史日历数值可能已被修订。结果仅为事后观察，不代表因果关系或可交易收益；不会用实时快照代替历史价格。</string>
+    <string name="coverage_complete">完整</string>
+    <string name="coverage_partial">部分覆盖</string>
+    <string name="coverage_unavailable">不可用</string>
+    <string name="coverage_asset">%1$s · %2$s</string>
+    <string name="coverage_source">来源：%1$s · K线周期：%2$s分钟</string>
+    <string name="coverage_windows">已获取公布后窗口：%1$s分钟</string>
+    <string name="coverage_retention">超出该数据源的日内行情保留期。</string>
+    <string name="coverage_provider_error">历史数据源请求失败或访问受限。解决访问问题后可重试补采。</string>
+    <string name="coverage_approximate_time">公布时间不精确或属于全天事件，不进行日内涨跌归因。</string>
+    <string name="coverage_missing_samples">部分观察时点缺少有效样本，可能因休市或时间精度不足；未对缺失价格进行插值。</string>
+    <string name="history_load_more">加载更早的事件</string>
+    <string name="history_refresh">刷新历史数据</string>
 </resources>

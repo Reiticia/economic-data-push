@@ -11,6 +11,8 @@ pub struct AppConfig {
     pub calendar: CalendarConfig,
     pub scheduler: SchedulerConfig,
     pub market: MarketConfig,
+    #[serde(default)]
+    pub backfill: BackfillConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -46,6 +48,22 @@ pub struct MarketConfig {
     pub yahoo_base_url: String,
     pub binance_base_url: String,
     pub symbols: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct BackfillConfig {
+    pub calendar_api_base_url: String,
+    pub request_delay_ms: u64,
+}
+
+impl Default for BackfillConfig {
+    fn default() -> Self {
+        Self {
+            calendar_api_base_url: "https://api.tradingeconomics.com".into(),
+            request_delay_ms: 1000,
+        }
+    }
 }
 
 impl AppConfig {

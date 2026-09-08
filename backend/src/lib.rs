@@ -1,5 +1,6 @@
 pub mod analysis;
 pub mod api;
+pub mod backfill;
 pub mod calendar;
 pub mod config;
 pub mod error;
@@ -27,4 +28,5 @@ pub struct AppState {
     pub market_service: Arc<MarketService>,
     pub analysis_service: Arc<AnalysisService>,
     pub event_bus: broadcast::Sender<AppEvent>,
+    pub backfill: backfill::repository::BackfillRepository,
 }

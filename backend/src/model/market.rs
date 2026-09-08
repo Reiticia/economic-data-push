@@ -136,6 +136,18 @@ pub enum Interval {
     OneDay,
 }
 
+impl Interval {
+    pub fn seconds(self) -> i64 {
+        match self {
+            Self::OneMinute => 60,
+            Self::FiveMinutes => 300,
+            Self::FifteenMinutes => 900,
+            Self::OneHour => 3600,
+            Self::OneDay => 86400,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketSnapshot {

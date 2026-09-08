@@ -50,5 +50,6 @@ pub(crate) fn event_from_row(row: SqliteRow) -> Result<EconomicEvent, AppError> 
         forecast: decimal_from_row(&row, "forecast")?,
         unit: row.try_get("unit")?,
         status: EventStatus::from_str(&status).map_err(AppError::Internal)?,
+        time_exact: row.try_get("time_exact")?,
     })
 }

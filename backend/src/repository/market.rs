@@ -98,6 +98,28 @@ impl MarketRepository {
         Ok(())
     }
 
+    /// A retry with reduced coverage must not leave stale reaction rows behind.
+    pub async fn replace_reactions(
+        &self,
+        event_id: i64,
+        reactions: &[MarketReaction],
+    ) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM market_reaction WHERE event_id=?")
+            .bind(event_id)
+            .execute(&mut *tx)
+            .await?;
+        for r in reactions {
+            sqlx::query("INSERT INTO market_reaction(event_id,symbol,baseline_price,reaction_unit,change_1m,change_5m,change_15m,change_30m,change_60m,calculated_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+                .bind(event_id).bind(r.symbol.as_str()).bind(r.baseline_price)
+                .bind(if r.reaction_unit == ReactionUnit::BasisPoints { "basis_points" } else { "percent" })
+                .bind(r.change_1m).bind(r.change_5m).bind(r.change_15m).bind(r.change_30m).bind(r.change_60m)
+                .bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn reactions(&self, event_id: i64) -> Result<Vec<MarketReaction>, AppError> {
         let rows =
             sqlx::query("SELECT * FROM market_reaction WHERE event_id = ? ORDER BY symbol ASC")

@@ -45,6 +45,24 @@ impl MarketService {
         }
     }
 
+    pub fn symbols(&self) -> &[MarketSymbol] {
+        &self.symbols
+    }
+
+    pub async fn historical_candles(
+        &self,
+        symbol: MarketSymbol,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+        interval: crate::model::Interval,
+    ) -> Result<Vec<crate::model::Candle>, AppError> {
+        self.providers
+            .get(&symbol)
+            .ok_or_else(|| AppError::Provider(format!("no provider for {symbol}")))?
+            .candles(symbol, start, end, interval)
+            .await
+    }
+
     pub async fn quote(&self, symbol: MarketSymbol) -> Result<Quote, AppError> {
         self.providers
             .get(&symbol)

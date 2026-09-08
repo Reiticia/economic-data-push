@@ -122,8 +122,8 @@ private fun EventContent(
             Button(
                 onClick = onAnalysis,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = event.status in setOf("released", "collecting_market_data", "analyzing", "completed"),
-            ) { Text(stringResource(if (event.status == "completed") R.string.view_analysis else R.string.view_analysis_progress)) }
+                enabled = event.status in setOf("released", "collecting_market_data", "analyzing", "completed", "historical"),
+            ) { Text(stringResource(if (event.status in setOf("completed", "historical")) R.string.view_analysis else R.string.view_analysis_progress)) }
         }
         item {
             Card(onClick = onHistory, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -219,7 +219,11 @@ private fun MarketTrackingCard(event: EconomicEvent, market: MarketResponse?) {
                     )
                 }
             }
-            AnalysisProgress(event.eventTime, event.status)
+            if (event.status == "historical") {
+                Text(stringResource(R.string.historical_method), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                AnalysisProgress(event.eventTime, event.status)
+            }
         }
     }
 }

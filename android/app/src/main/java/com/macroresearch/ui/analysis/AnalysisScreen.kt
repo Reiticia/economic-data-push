@@ -80,10 +80,11 @@ fun AnalysisScreen(id: Long, repository: MacroRepository, onBack: () -> Unit) {
 @Composable
 private fun AnalysisPending(event: EconomicEvent, modifier: Modifier, error: String?, retry: () -> Unit) {
     Column(modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)) {
-        CircularProgressIndicator()
-        Text(stringResource(R.string.observing_market), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        val historical = event.status == "historical"
+        if (!historical) CircularProgressIndicator()
+        Text(stringResource(if (historical) R.string.historical_pending else R.string.observing_market), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(stringResource(R.string.current_status, statusLabel(event.status)), color = MaterialTheme.colorScheme.primary)
-        Text(stringResource(R.string.analysis_pending_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(if (historical) R.string.historical_pending_body else R.string.analysis_pending_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
         error?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
         Button(onClick = retry) { Text(stringResource(R.string.retry)) }
     }
@@ -96,7 +97,11 @@ private fun AnalysisContent(event: EconomicEvent, report: AnalysisReport, market
         item { SignalCard(report) }
         item { ExpectedCard(report) }
         item { ObservedTable(report) }
-        item { ReactionTimeline(event, market) }
+        if (report.historical != null) {
+            item { HistoricalCoverageCard(report.historical) }
+        } else {
+            item { ReactionTimeline(event, market) }
+        }
         item {
             Text(report.summary, Modifier.padding(bottom = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }

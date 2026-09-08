@@ -32,6 +32,7 @@ async fn event_upsert_preserves_state_and_records_revisions() {
         forecast: None,
         unit: Some("%".into()),
         status: EventStatus::Scheduled,
+        time_exact: true,
     };
 
     let id = repository.save_events(&[event.clone()]).await.unwrap()[0];

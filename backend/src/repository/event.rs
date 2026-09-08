@@ -44,8 +44,8 @@ impl EventRepository {
             sqlx::query(
                 r#"INSERT INTO economic_event (
                     provider, provider_id, release_group_id, country, currency, category, event, event_time,
-                    importance, actual, previous, consensus, forecast, unit, status, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)
+                    importance, actual, previous, consensus, forecast, unit, status, time_exact, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(provider, provider_id) DO UPDATE SET
                     release_group_id = excluded.release_group_id,
                     country = excluded.country,
@@ -59,7 +59,9 @@ impl EventRepository {
                     consensus = excluded.consensus,
                     forecast = excluded.forecast,
                     unit = excluded.unit,
-                    updated_at = excluded.updated_at"#,
+                    time_exact = excluded.time_exact,
+                    updated_at = excluded.updated_at
+                WHERE economic_event.status != 'historical' OR excluded.status = 'historical'"#,
             )
             .bind(&event.provider)
             .bind(&event.provider_id)
@@ -75,6 +77,8 @@ impl EventRepository {
             .bind(event.consensus.map(|value| value.to_string()))
             .bind(event.forecast.map(|value| value.to_string()))
             .bind(&event.unit)
+            .bind(event.status.as_str())
+            .bind(event.time_exact)
             .bind(Utc::now().to_rfc3339())
             .execute(&mut *transaction)
             .await?;
@@ -106,6 +110,19 @@ impl EventRepository {
 
         transaction.commit().await?;
         Ok(ids)
+    }
+
+    pub async fn find_provider_event(
+        &self,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<EconomicEvent>, AppError> {
+        let row = sqlx::query("SELECT * FROM economic_event WHERE provider=? AND provider_id=?")
+            .bind(provider)
+            .bind(provider_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        row.map(event_from_row).transpose()
     }
 
     pub async fn get(&self, id: i64) -> Result<EconomicEvent, AppError> {
@@ -179,19 +196,39 @@ impl EventRepository {
         category: Option<&str>,
         limit: u32,
     ) -> Result<Vec<EconomicEvent>, AppError> {
+        self.history_page(country, category, limit, 0, None, None)
+            .await
+    }
+
+    pub async fn history_page(
+        &self,
+        country: Option<&str>,
+        category: Option<&str>,
+        limit: u32,
+        offset: u32,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+    ) -> Result<Vec<EconomicEvent>, AppError> {
         let rows = sqlx::query(
             r#"SELECT * FROM economic_event
                WHERE event_time < ?
                  AND (? IS NULL OR lower(country) = lower(?))
                  AND (? IS NULL OR lower(category) LIKE '%' || lower(?) || '%')
-               ORDER BY event_time DESC LIMIT ?"#,
+                 AND (? IS NULL OR event_time >= ?)
+                 AND (? IS NULL OR event_time < ?)
+               ORDER BY event_time DESC, id DESC LIMIT ? OFFSET ?"#,
         )
         .bind(Utc::now().to_rfc3339())
         .bind(country)
         .bind(country)
         .bind(category)
         .bind(category)
-        .bind(i64::from(limit.min(500)))
+        .bind(from.map(|v| v.to_rfc3339()))
+        .bind(from.map(|v| v.to_rfc3339()))
+        .bind(to.map(|v| v.to_rfc3339()))
+        .bind(to.map(|v| v.to_rfc3339()))
+        .bind(i64::from(limit.clamp(1, 500)))
+        .bind(i64::from(offset))
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(event_from_row).collect()

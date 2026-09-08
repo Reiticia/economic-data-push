@@ -34,6 +34,7 @@ class LabelsTest {
         assertEquals(R.string.signal_strong_dovish, macroSignalResource("strong_dovish"))
         assertEquals(R.string.status_collecting, statusLabelResource("collecting_market_data"))
         assertEquals(R.string.status_completed, statusLabelResource("completed"))
+        assertEquals(R.string.status_historical, statusLabelResource("historical"))
         assertEquals(R.string.importance_high, importanceLabelResource(3))
         assertEquals(R.string.importance_medium, importanceLabelResource(2))
         assertEquals(R.string.importance_low, importanceLabelResource(1))

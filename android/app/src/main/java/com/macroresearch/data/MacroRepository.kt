@@ -62,10 +62,11 @@ class MacroRepository(
     suspend fun market(id: Long): MarketResponse = api.market(id)
 
     suspend fun history(
-        country: String? = "United States",
+        country: String? = null,
         category: String? = null,
         limit: Int = 100,
-    ): List<EconomicEvent> = api.history(country, category, limit)
+        offset: Int = 0,
+    ): List<EconomicEvent> = api.history(country, category, limit, offset)
 
     suspend fun setFollowed(id: Long, followed: Boolean) {
         if (followed) dao.follow(FollowedEventEntity(id)) else dao.unfollow(id)

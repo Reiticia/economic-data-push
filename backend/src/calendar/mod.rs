@@ -1,5 +1,7 @@
 mod provider;
 pub mod trading_economics;
+pub mod trading_economics_api;
+pub use trading_economics_api::TradingEconomicsApiProvider;
 
 pub use provider::CalendarProvider;
 pub use trading_economics::TradingEconomicsProvider;

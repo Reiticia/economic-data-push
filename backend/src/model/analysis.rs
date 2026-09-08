@@ -91,6 +91,8 @@ pub struct AnalysisReport {
     pub observed_reactions: Vec<MarketReaction>,
     pub comparisons: Vec<ReactionComparison>,
     pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub historical: Option<super::HistoricalEvidence>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

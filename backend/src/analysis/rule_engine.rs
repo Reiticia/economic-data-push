@@ -189,6 +189,7 @@ mod tests {
             forecast: None,
             unit: Some("%".into()),
             status: EventStatus::Released,
+            time_exact: true,
         };
         assert_eq!(
             engine().signal_for(&event, Some(Decimal::new(3, 1))),

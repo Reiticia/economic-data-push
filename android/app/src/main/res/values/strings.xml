@@ -165,4 +165,22 @@
     <string name="notification_released">%1$s released</string>
     <string name="notification_analysis_title">Market reaction analysis complete</string>
     <string name="notification_analysis_body">The 60-minute analysis for event #%1$d is ready</string>
+    <string name="historical_pending">Historical analysis is not ready</string>
+    <string name="historical_pending_body">The historical import may still be running or was interrupted. Resume the backfill on the server, then check again. Current prices will not be used to fill historical gaps.</string>
+    <string name="status_historical">Historical</string>
+    <string name="historical_coverage">Historical data coverage</string>
+    <string name="historical_method">Returns use real historical candle closes: a strictly pre-release baseline and samples at or before each horizon. The table shows available windows only; -- means missing, not zero. Five-minute bars cannot measure a one-minute reaction.</string>
+    <string name="historical_revision_warning">Historical calendar values may be revised. These are retrospective observations, not proof of a causal or tradable reaction. Live snapshots are not used as historical prices.</string>
+    <string name="coverage_complete">Complete</string>
+    <string name="coverage_partial">Partial</string>
+    <string name="coverage_unavailable">Unavailable</string>
+    <string name="coverage_asset">%1$s · %2$s</string>
+    <string name="coverage_source">Source: %1$s · candle interval: %2$s min</string>
+    <string name="coverage_windows">Available windows after release: %1$s min</string>
+    <string name="coverage_retention">Outside this source’s intraday retention period.</string>
+    <string name="coverage_provider_error">Historical source request failed or access was restricted. Retry after resolving the source access issue.</string>
+    <string name="coverage_approximate_time">The release time is approximate or all-day; intraday attribution is disabled.</string>
+    <string name="coverage_missing_samples">Some exact time windows are missing, including possible market closures or insufficient time resolution. No prices were interpolated.</string>
+    <string name="history_load_more">Load older releases</string>
+    <string name="history_refresh">Refresh history</string>
 </resources>

@@ -10,7 +10,8 @@ use market_event_analyzer::{
     AppState,
     analysis::{AnalysisService, RuleEngine},
     api,
-    calendar::{CalendarService, TradingEconomicsProvider},
+    backfill::{BackfillRange, BackfillService, repository::BackfillRepository},
+    calendar::{CalendarService, TradingEconomicsApiProvider, TradingEconomicsProvider},
     config::AppConfig,
     market::{BinanceProvider, MarketService, YahooProvider},
     model::MarketSymbol,
@@ -34,6 +35,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let config = AppConfig::load()?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let history_range = if args.is_empty() {
+        None
+    } else {
+        Some(BackfillRange::from_args(&args, chrono::Utc::now())?)
+    };
+    let history_key = if history_range.is_some() {
+        Some(std::env::var("TE_API_KEY").ok().filter(|v| !v.trim().is_empty())
+            .ok_or("Historical import requires TE_API_KEY with calendar history access. The public calendar page is not a historical data source.")?)
+    } else {
+        None
+    };
     ensure_database_directory(&config.database.url)?;
     let options = SqliteConnectOptions::from_str(&config.database.url)?
         .create_if_missing(true)
@@ -50,6 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     let events = EventRepository::new(pool.clone());
     let market = MarketRepository::new(pool.clone());
+    let backfill = BackfillRepository::new(pool.clone());
     let analyses = AnalysisRepository::new(pool);
     let calendar_provider = Arc::new(TradingEconomicsProvider::new(
         http.clone(),
@@ -60,7 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http.clone(),
         &config.market.yahoo_base_url,
     ));
-    let binance = Arc::new(BinanceProvider::new(http, &config.market.binance_base_url));
+    let binance = Arc::new(BinanceProvider::new(
+        http.clone(),
+        &config.market.binance_base_url,
+    ));
     let symbols = config
         .market
         .symbols
@@ -76,6 +93,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         analyses.clone(),
         rules,
     ));
+    if let Some(range) = history_range {
+        let provider = Arc::new(TradingEconomicsApiProvider::new(
+            http,
+            &config.backfill.calendar_api_base_url,
+            history_key.unwrap(),
+        )?);
+        let service = BackfillService::new(
+            backfill,
+            provider,
+            events,
+            analyses,
+            market_service,
+            analysis_service,
+            Duration::from_millis(config.backfill.request_delay_ms.max(250)),
+        );
+        let summary = service.run(range).await?;
+        println!("{}", serde_json::to_string_pretty(&summary)?);
+        if summary.status != "complete" {
+            return Err("Historical import is partial; inspect /api/v1/history/backfill and analysis historical.coverage before using the data".into());
+        }
+        return Ok(());
+    }
     let (event_bus, _) = broadcast::channel(256);
     let state = AppState {
         events,
@@ -85,6 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         market_service,
         analysis_service,
         event_bus,
+        backfill,
     };
 
     tokio::spawn(scheduler::calendar_sync_loop(

@@ -1,7 +1,9 @@
 mod analysis;
 mod event;
+mod historical;
 mod market;
 mod observation;
+pub use historical::*;
 
 pub use analysis::*;
 pub use event::*;

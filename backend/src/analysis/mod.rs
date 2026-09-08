@@ -11,7 +11,7 @@ use chrono::Utc;
 
 use crate::{
     error::AppError,
-    model::AnalysisReport,
+    model::{AnalysisReport, EconomicEvent, HistoricalEvidence, MarketReaction},
     repository::{AnalysisRepository, EventRepository, MarketRepository},
 };
 
@@ -39,14 +39,32 @@ impl AnalysisService {
 
     pub async fn analyze(&self, event_id: i64) -> Result<AnalysisReport, AppError> {
         let event = self.events.get(event_id).await?;
+        let snapshots = self.market.snapshots(event_id).await?;
+        let observed = calculate_reactions(event_id, event.event_time, &snapshots);
+        self.build_report(event, observed, None).await
+    }
+
+    pub async fn analyze_historical(
+        &self,
+        event_id: i64,
+        observed: Vec<MarketReaction>,
+        evidence: HistoricalEvidence,
+    ) -> Result<AnalysisReport, AppError> {
+        let event = self.events.get(event_id).await?;
+        self.build_report(event, observed, Some(evidence)).await
+    }
+
+    async fn build_report(
+        &self,
+        event: EconomicEvent,
+        observed: Vec<MarketReaction>,
+        historical: Option<HistoricalEvidence>,
+    ) -> Result<AnalysisReport, AppError> {
+        let event_id = event.id;
         let surprise = raw_surprise(event.actual, event.consensus);
         let signal = self.rules.signal_for(&event, surprise);
         let expected = self.rules.expected_reactions(signal);
-        let snapshots = self.market.snapshots(event_id).await?;
-        let observed = calculate_reactions(event_id, event.event_time, &snapshots);
-        for reaction in &observed {
-            self.market.upsert_reaction(reaction).await?;
-        }
+        self.market.replace_reactions(event_id, &observed).await?;
         let comparisons = report::compare(&expected, &observed);
         let summary = report::summary(&event, surprise, signal, &comparisons);
         let now = Utc::now();
@@ -59,6 +77,7 @@ impl AnalysisService {
             observed_reactions: observed,
             comparisons,
             summary,
+            historical,
             created_at: now,
             updated_at: now,
         };

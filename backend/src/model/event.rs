@@ -23,6 +23,13 @@ pub struct EconomicEvent {
     pub forecast: Option<Decimal>,
     pub unit: Option<String>,
     pub status: EventStatus,
+    /// False for all-day / approximate releases: never attribute intraday reactions.
+    #[serde(default = "exact_time_default")]
+    pub time_exact: bool,
+}
+
+fn exact_time_default() -> bool {
+    true
 }
 
 impl EconomicEvent {
@@ -42,6 +49,7 @@ pub enum EventStatus {
     Analyzing,
     Completed,
     Timeout,
+    Historical,
 }
 
 impl EventStatus {
@@ -54,6 +62,7 @@ impl EventStatus {
             Self::Analyzing => "analyzing",
             Self::Completed => "completed",
             Self::Timeout => "timeout",
+            Self::Historical => "historical",
         }
     }
 }
@@ -76,6 +85,7 @@ impl FromStr for EventStatus {
             "analyzing" => Ok(Self::Analyzing),
             "completed" => Ok(Self::Completed),
             "timeout" => Ok(Self::Timeout),
+            "historical" => Ok(Self::Historical),
             other => Err(format!("unknown event status: {other}")),
         }
     }

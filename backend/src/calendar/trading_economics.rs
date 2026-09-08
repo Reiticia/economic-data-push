@@ -130,6 +130,7 @@ pub fn parse_calendar(html: &str) -> Result<Vec<EconomicEvent>, AppError> {
             forecast: parsed_values[3],
             unit,
             status: EventStatus::Scheduled,
+            time_exact: true,
         });
     }
 

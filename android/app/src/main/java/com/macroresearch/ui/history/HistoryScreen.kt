@@ -11,15 +11,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,7 +38,8 @@ import com.macroresearch.ui.viewModelFactory
 fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Long) -> Unit) {
     val vm: HistoryViewModel = viewModel(factory = viewModelFactory { HistoryViewModel(repository) })
     val state by vm.state.collectAsStateWithLifecycle()
-    var selected by remember { mutableStateOf<String?>(null) }
+    val selected by vm.category.collectAsStateWithLifecycle()
+    val hasMore by vm.hasMore.collectAsStateWithLifecycle()
     val events = state.value.orEmpty()
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -54,12 +55,13 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
                 listOf(null to stringResource(R.string.all), "inflation" to stringResource(R.string.category_inflation), "employment" to stringResource(R.string.category_employment)).forEach { (category, label) ->
                     FilterChip(
                         selected = selected == category,
-                        onClick = { selected = category; vm.refresh(category) },
+                        onClick = { vm.refresh(category) },
                         label = { Text(label) },
                     )
                 }
             }
         }
+        item { TextButton(onClick = { vm.refresh() }, enabled = !state.loading) { Text(stringResource(R.string.history_refresh)) } }
         item { SummaryCards(events) }
         state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
         item {
@@ -69,6 +71,12 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
             }
         }
         items(events, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
+        if (state.loading) item { CircularProgressIndicator() }
+        if (hasMore && !state.loading) item {
+            Button(onClick = vm::loadMore, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(if (state.error == null) R.string.history_load_more else R.string.retry))
+            }
+        }
     }
 }
 
