@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.macroresearch.data.model.EconomicEvent
@@ -44,7 +45,7 @@ fun EventCard(event: EconomicEvent, onClick: () -> Unit, modifier: Modifier = Mo
                 Text("${event.localTime()}  ${flag(event.country)}  ${countryLabel(event.country)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(statusLabel(event.status), color = statusColor(event.status), style = MaterialTheme.typography.labelMedium)
             }
-            Text(event.event, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(event.localizedName(LocalConfiguration.current.locales[0]), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (event.actual == null) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(stringResource(R.string.previous_value, event.localizedValue(event.previous)), style = MaterialTheme.typography.bodyMedium)

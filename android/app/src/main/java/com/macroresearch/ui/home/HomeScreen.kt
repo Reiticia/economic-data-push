@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +51,7 @@ import com.macroresearch.ui.common.localizedCountdown as countdown
 import com.macroresearch.ui.common.flag
 import com.macroresearch.ui.common.localizedDate as localDate
 import com.macroresearch.ui.common.localTime
+import com.macroresearch.ui.common.localizedName
 import com.macroresearch.ui.common.localizedValue as value
 import com.macroresearch.ui.theme.Upcoming
 import com.macroresearch.ui.viewModelFactory
@@ -123,6 +125,7 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
 @Composable
 private fun NextEventCard(event: EconomicEvent, onClick: () -> Unit) {
     var now by remember { mutableStateOf(Instant.now()) }
+    val locale = LocalConfiguration.current.locales[0]
     LaunchedEffect(event.id) {
         while (true) { now = Instant.now(); delay(1_000) }
     }
@@ -137,7 +140,7 @@ private fun NextEventCard(event: EconomicEvent, onClick: () -> Unit) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.next_event), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("${flag(event.country)}  ${event.event}", modifier = Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("${flag(event.country)}  ${event.localizedName(locale)}", modifier = Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
                     countdown(event.eventTime, now),
                     color = MaterialTheme.colorScheme.onPrimaryContainer,

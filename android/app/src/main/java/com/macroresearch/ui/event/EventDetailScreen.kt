@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,6 +51,7 @@ import com.macroresearch.ui.common.localizedCountdown as countdown
 import com.macroresearch.ui.common.flag
 import com.macroresearch.ui.common.localizedChange as formatChange
 import com.macroresearch.ui.common.localTime
+import com.macroresearch.ui.common.localizedName
 import com.macroresearch.ui.common.statusLabel
 import com.macroresearch.ui.common.localizedValue as value
 import com.macroresearch.ui.theme.AssetDown
@@ -72,10 +74,11 @@ fun EventDetailScreen(
     val vm: EventDetailViewModel = viewModel(key = "event-$id", factory = viewModelFactory { EventDetailViewModel(id, repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     val event = state.detail?.event
+    val locale = LocalConfiguration.current.locales[0]
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(event?.event ?: stringResource(R.string.event_detail), fontWeight = FontWeight.Bold) },
+                title = { Text(event?.localizedName(locale) ?: stringResource(R.string.event_detail), fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) } },
                 actions = {
                     IconButton(onClick = vm::toggleFollowed) {

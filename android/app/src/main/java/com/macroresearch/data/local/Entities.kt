@@ -14,6 +14,8 @@ data class CachedEventEntity(
     val currency: String?,
     val category: String,
     val event: String,
+    val eventZhCn: String?,
+    val eventZhTw: String?,
     val eventTime: String,
     val importance: Int,
     val actual: String?,
@@ -31,12 +33,11 @@ data class FollowedEventEntity(
 )
 
 fun EconomicEvent.asEntity() = CachedEventEntity(
-    id, provider, providerId, releaseGroupId, country, currency, category, event,
+    id, provider, providerId, releaseGroupId, country, currency, category, event, eventZhCn, eventZhTw,
     eventTime, importance, actual, previous, consensus, forecast, unit, status,
 )
 
 fun CachedEventEntity.asExternalModel() = EconomicEvent(
-    id, provider, providerId, releaseGroupId, country, currency, category, event,
+    id, provider, providerId, releaseGroupId, country, currency, category, event, eventZhCn, eventZhTw,
     eventTime, importance, actual, previous, consensus, forecast, unit, status,
 )
-

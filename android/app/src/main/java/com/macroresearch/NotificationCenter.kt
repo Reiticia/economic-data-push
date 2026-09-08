@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.macroresearch.data.model.SocketEvent
+import com.macroresearch.ui.common.localizedName
 
 class NotificationCenter(private val context: Context) {
     private val manager = NotificationManagerCompat.from(context)
@@ -35,7 +36,8 @@ class NotificationCenter(private val context: Context) {
         val body: String
         when (event.type) {
             "economic_event_released" -> {
-                title = localized.getString(R.string.notification_released, event.event ?: localized.getString(R.string.economic_data))
+                val locale = localized.resources.configuration.locales[0]
+                title = localized.getString(R.string.notification_released, event.localizedName(locale) ?: localized.getString(R.string.economic_data))
                 body = localized.getString(R.string.actual_consensus, event.actual ?: "--", event.consensus ?: "--")
             }
             "analysis_completed" -> {

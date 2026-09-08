@@ -9,6 +9,8 @@ data class EconomicEvent(
     val currency: String?,
     val category: String,
     val event: String,
+    val eventZhCn: String? = null,
+    val eventZhTw: String? = null,
     val eventTime: String,
     val importance: Int,
     val actual: String?,
@@ -112,6 +114,8 @@ data class SocketEvent(
     val type: String,
     val eventId: Long,
     val event: String? = null,
+    val eventZhCn: String? = null,
+    val eventZhTw: String? = null,
     val actual: String? = null,
     val consensus: String? = null,
 )

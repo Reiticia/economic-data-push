@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,6 +49,7 @@ import com.macroresearch.data.model.MarketSnapshot
 import com.macroresearch.ui.AnalysisViewModel
 import com.macroresearch.ui.common.assetLabel
 import com.macroresearch.ui.common.macroSignalLabel
+import com.macroresearch.ui.common.localizedName
 import com.macroresearch.ui.common.statusLabel
 import com.macroresearch.ui.common.localizedChange as formatChange
 import com.macroresearch.ui.common.localizedValue as value
@@ -66,7 +68,7 @@ fun AnalysisScreen(id: Long, repository: MacroRepository, onBack: () -> Unit) {
     val vm: AnalysisViewModel = viewModel(key = "analysis-$id", factory = viewModelFactory { AnalysisViewModel(id, repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     Scaffold(
-        topBar = { TopAppBar(title = { Text(state.event?.event ?: stringResource(R.string.analysis), fontWeight = FontWeight.Bold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) } }) },
+        topBar = { TopAppBar(title = { Text(state.event?.localizedName(LocalConfiguration.current.locales[0]) ?: stringResource(R.string.analysis), fontWeight = FontWeight.Bold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) } }) },
     ) { padding ->
         when {
             state.loading -> Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
