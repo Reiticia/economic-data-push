@@ -15,6 +15,8 @@ pub struct EconomicEvent {
     pub currency: Option<String>,
     pub category: String,
     pub event: String,
+    pub event_zh_cn: Option<String>,
+    pub event_zh_tw: Option<String>,
     pub event_time: DateTime<Utc>,
     pub importance: u8,
     pub actual: Option<Decimal>,

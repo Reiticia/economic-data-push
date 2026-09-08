@@ -17,6 +17,7 @@ use market_event_analyzer::{
     model::MarketSymbol,
     repository::{AnalysisRepository, EventRepository, MarketRepository},
     scheduler,
+    translation::{OpenAiEventNameTranslator, TranslationService},
 };
 use sqlx::{
     SqlitePool,
@@ -69,7 +70,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http.clone(),
         &config.calendar.base_url,
     ));
-    let calendar_service = Arc::new(CalendarService::new(calendar_provider, events.clone()));
+    let translation_service = if config.translation.enabled {
+        let api_key = std::env::var(&config.translation.api_key_env)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "translation is enabled but {} is missing",
+                    config.translation.api_key_env
+                )
+            })?;
+        let translator = Arc::new(OpenAiEventNameTranslator::new(
+            http.clone(),
+            &config.translation.base_url,
+            config.translation.model.clone(),
+            api_key,
+        )?);
+        Some(Arc::new(TranslationService::new(
+            events.clone(),
+            translator,
+            config.translation.batch_size,
+        )))
+    } else {
+        None
+    };
+    let mut calendar_service = CalendarService::new(calendar_provider, events.clone());
+    if let Some(translation) = &translation_service {
+        calendar_service = calendar_service.with_translation(translation.clone());
+    }
+    let calendar_service = Arc::new(calendar_service);
     let yahoo = Arc::new(YahooProvider::new(
         http.clone(),
         &config.market.yahoo_base_url,
@@ -99,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &config.backfill.calendar_api_base_url,
             history_key.unwrap(),
         )?);
-        let service = BackfillService::new(
+        let mut service = BackfillService::new(
             backfill,
             provider,
             events,
@@ -108,6 +137,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             analysis_service,
             Duration::from_millis(config.backfill.request_delay_ms.max(250)),
         );
+        if let Some(translation) = translation_service {
+            service = service.with_translation(translation);
+        }
         let summary = service.run(range).await?;
         println!("{}", serde_json::to_string_pretty(&summary)?);
         if summary.status != "complete" {
@@ -126,6 +158,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_bus,
         backfill,
     };
+
+    if config.translation.backfill_on_startup
+        && let Some(translation) = translation_service
+    {
+        tokio::spawn(async move {
+            match translation.backfill_existing().await {
+                Ok(0) => {}
+                Ok(count) => tracing::info!(count, "existing event names translated"),
+                Err(error) => tracing::warn!(%error, "existing event-name translation failed"),
+            }
+        });
+    }
 
     tokio::spawn(scheduler::calendar_sync_loop(
         calendar_service,

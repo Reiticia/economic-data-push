@@ -13,6 +13,8 @@ pub struct AppConfig {
     pub market: MarketConfig,
     #[serde(default)]
     pub backfill: BackfillConfig,
+    #[serde(default)]
+    pub translation: TranslationConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -62,6 +64,30 @@ impl Default for BackfillConfig {
         Self {
             calendar_api_base_url: "https://api.tradingeconomics.com".into(),
             request_delay_ms: 1000,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct TranslationConfig {
+    pub enabled: bool,
+    pub base_url: String,
+    pub model: String,
+    pub api_key_env: String,
+    pub batch_size: usize,
+    pub backfill_on_startup: bool,
+}
+
+impl Default for TranslationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: "https://api.openai.com/v1".into(),
+            model: "gpt-5-mini".into(),
+            api_key_env: "OPENAI_API_KEY".into(),
+            batch_size: 20,
+            backfill_on_startup: true,
         }
     }
 }

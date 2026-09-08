@@ -85,8 +85,7 @@ async fn watch_once(
             .find(|event| event.provider_id == watched.provider_id)
             && updated.has_release()
         {
-            let mut released = updated.clone();
-            released.id = watched.id;
+            let released = state.events.get(watched.id).await?;
             release(state, &released).await?;
             continue;
         }
@@ -102,6 +101,8 @@ async fn release(state: &AppState, event: &EconomicEvent) -> Result<(), crate::e
     let _ = state.event_bus.send(AppEvent::EconomicEventReleased {
         event_id: event.id,
         event: event.event.clone(),
+        event_zh_cn: event.event_zh_cn.clone(),
+        event_zh_tw: event.event_zh_tw.clone(),
         actual: event.actual.map(|value| value.to_string()),
         consensus: event.consensus.map(|value| value.to_string()),
     });

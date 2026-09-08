@@ -42,6 +42,8 @@ pub(crate) fn event_from_row(row: SqliteRow) -> Result<EconomicEvent, AppError> 
         currency: row.try_get("currency")?,
         category: row.try_get("category")?,
         event: row.try_get("event")?,
+        event_zh_cn: row.try_get("event_zh_cn")?,
+        event_zh_tw: row.try_get("event_zh_tw")?,
         event_time: datetime_from_row(&row, "event_time")?,
         importance: row.try_get::<i64, _>("importance")? as u8,
         actual: decimal_from_row(&row, "actual")?,

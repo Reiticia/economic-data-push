@@ -8,6 +8,7 @@ pub mod market;
 pub mod model;
 pub mod repository;
 pub mod scheduler;
+pub mod translation;
 
 use std::sync::Arc;
 

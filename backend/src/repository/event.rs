@@ -1,5 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use sqlx::{Row, SqlitePool};
+use std::collections::HashMap;
 
 use crate::{
     error::AppError,
@@ -43,15 +44,29 @@ impl EventRepository {
 
             sqlx::query(
                 r#"INSERT INTO economic_event (
-                    provider, provider_id, release_group_id, country, currency, category, event, event_time,
-                    importance, actual, previous, consensus, forecast, unit, status, time_exact, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    provider, provider_id, release_group_id, country, currency, category, event,
+                    event_zh_cn, event_zh_tw, event_time, importance, actual, previous, consensus,
+                    forecast, unit, status, time_exact, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?,
+                    COALESCE(?, (SELECT zh_cn FROM event_name_translation WHERE source_text = ?)),
+                    COALESCE(?, (SELECT zh_tw FROM event_name_translation WHERE source_text = ?)),
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(provider, provider_id) DO UPDATE SET
                     release_group_id = excluded.release_group_id,
                     country = excluded.country,
                     currency = excluded.currency,
                     category = excluded.category,
                     event = excluded.event,
+                    event_zh_cn = CASE
+                        WHEN excluded.event = economic_event.event
+                        THEN COALESCE(excluded.event_zh_cn, economic_event.event_zh_cn)
+                        ELSE excluded.event_zh_cn
+                    END,
+                    event_zh_tw = CASE
+                        WHEN excluded.event = economic_event.event
+                        THEN COALESCE(excluded.event_zh_tw, economic_event.event_zh_tw)
+                        ELSE excluded.event_zh_tw
+                    END,
                     event_time = excluded.event_time,
                     importance = excluded.importance,
                     actual = excluded.actual,
@@ -69,6 +84,10 @@ impl EventRepository {
             .bind(&event.country)
             .bind(&event.currency)
             .bind(&event.category)
+            .bind(&event.event)
+            .bind(&event.event_zh_cn)
+            .bind(&event.event)
+            .bind(&event.event_zh_tw)
             .bind(&event.event)
             .bind(event.event_time.to_rfc3339())
             .bind(i64::from(event.importance))
@@ -110,6 +129,80 @@ impl EventRepository {
 
         transaction.commit().await?;
         Ok(ids)
+    }
+
+    pub async fn cached_event_name_translations(
+        &self,
+        names: &[String],
+    ) -> Result<HashMap<String, (String, String)>, AppError> {
+        if names.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let placeholders = vec!["?"; names.len()].join(",");
+        let sql = format!(
+            "SELECT source_text, zh_cn, zh_tw FROM event_name_translation WHERE source_text IN ({placeholders})"
+        );
+        let mut query = sqlx::query(&sql);
+        for name in names {
+            query = query.bind(name);
+        }
+        let rows = query.fetch_all(&self.pool).await?;
+        rows.into_iter()
+            .map(|row| {
+                Ok((
+                    row.try_get("source_text")?,
+                    (row.try_get("zh_cn")?, row.try_get("zh_tw")?),
+                ))
+            })
+            .collect()
+    }
+
+    pub async fn save_event_name_translations(
+        &self,
+        translations: &[(String, String, String)],
+    ) -> Result<(), AppError> {
+        let mut transaction = self.pool.begin().await?;
+        for (source, zh_cn, zh_tw) in translations {
+            sqlx::query(
+                r#"INSERT INTO event_name_translation (source_text, zh_cn, zh_tw, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(source_text) DO NOTHING"#,
+            )
+            .bind(source)
+            .bind(zh_cn)
+            .bind(zh_tw)
+            .bind(Utc::now().to_rfc3339())
+            .execute(&mut *transaction)
+            .await?;
+            sqlx::query(
+                r#"UPDATE economic_event
+                   SET event_zh_cn = (SELECT zh_cn FROM event_name_translation WHERE source_text = ?),
+                       event_zh_tw = (SELECT zh_tw FROM event_name_translation WHERE source_text = ?),
+                       updated_at = ?
+                   WHERE event = ? AND (event_zh_cn IS NULL OR event_zh_tw IS NULL)"#,
+            )
+            .bind(source)
+            .bind(source)
+            .bind(Utc::now().to_rfc3339())
+            .bind(source)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub async fn untranslated_event_names(&self) -> Result<Vec<String>, AppError> {
+        let rows = sqlx::query(
+            r#"SELECT DISTINCT event FROM economic_event
+               WHERE event_zh_cn IS NULL OR event_zh_tw IS NULL
+               ORDER BY event"#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter()
+            .map(|row| row.try_get("event").map_err(AppError::from))
+            .collect()
     }
 
     pub async fn find_provider_event(

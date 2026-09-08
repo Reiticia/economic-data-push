@@ -122,6 +122,8 @@ pub fn parse_calendar(html: &str) -> Result<Vec<EconomicEvent>, AppError> {
             currency: attribute(&row, &["data-currency"]).or_else(|| country_currency(&country)),
             category,
             event: event_name,
+            event_zh_cn: None,
+            event_zh_tw: None,
             event_time,
             importance,
             actual: parsed_values[0],

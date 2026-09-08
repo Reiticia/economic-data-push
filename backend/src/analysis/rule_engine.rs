@@ -181,6 +181,8 @@ mod tests {
             currency: Some("USD".into()),
             category: "employment".into(),
             event: "US Unemployment Rate".into(),
+            event_zh_cn: None,
+            event_zh_tw: None,
             event_time: Utc::now(),
             importance: 3,
             actual: Some(Decimal::new(43, 1)),

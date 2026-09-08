@@ -118,6 +118,8 @@ fn parse_event(row: &Value) -> Result<EconomicEvent, AppError> {
         currency: text(row, "Currency"),
         category: required("Category")?,
         event: required("Event")?,
+        event_zh_cn: None,
+        event_zh_tw: None,
         event_time,
         importance: text(row, "Importance")
             .and_then(|s| s.parse::<u8>().ok())

@@ -11,6 +11,7 @@ use crate::{
     market::MarketService,
     model::{Candle, EventStatus, HistoricalEvidence, Interval, MarketSymbol},
     repository::{AnalysisRepository, EventRepository},
+    translation::TranslationService,
 };
 use repository::{BackfillRepository, BackfillSummary};
 
@@ -72,6 +73,7 @@ pub struct BackfillService {
     market: Arc<MarketService>,
     analysis: Arc<AnalysisService>,
     request_delay: StdDuration,
+    translation: Option<Arc<TranslationService>>,
 }
 
 impl BackfillService {
@@ -92,7 +94,13 @@ impl BackfillService {
             market,
             analysis,
             request_delay,
+            translation: None,
         }
+    }
+
+    pub fn with_translation(mut self, translation: Arc<TranslationService>) -> Self {
+        self.translation = Some(translation);
+        self
     }
 
     pub async fn run(&self, range: BackfillRange) -> Result<BackfillSummary, AppError> {
@@ -158,7 +166,7 @@ impl BackfillService {
     async fn run_day(&self, run: i64, date: NaiveDate) -> Result<(), AppError> {
         let start = date.and_hms_opt(0, 0, 0).unwrap().and_utc();
         let end = start + Duration::days(1);
-        let events = self
+        let mut events = self
             .request(|| self.calendar.fetch_events(start, end))
             .await?;
         if events
@@ -168,6 +176,11 @@ impl BackfillService {
             return Err(AppError::Provider(
                 "calendar ignored historical date bounds; import rejected".into(),
             ));
+        }
+        if let Some(translation) = &self.translation
+            && let Err(error) = translation.enrich(&mut events).await
+        {
+            tracing::warn!(%error, %date, "historical event-name translation failed");
         }
         let count = events.len();
         let mut ids = Vec::new();
