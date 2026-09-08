@@ -26,9 +26,9 @@ symbols = ["gold", "nasdaq100", "dxy", "us10y", "bitcoin"]
 # OpenAI-compatible event-name translation. The API key is read from the named
 # environment variable and is never stored in this file or the database.
 [translation]
-enabled = false
-base_url = "https://api.openai.com/v1"
-model = "gpt-5-mini"
+enabled = true
+base_url = "https://tokenrhythm.studio/v1"
+model = "deepseek-v4-flash-0731"
 api_key_env = "OPENAI_API_KEY"
 batch_size = 20
 backfill_on_startup = true
@@ -37,4 +37,3 @@ backfill_on_startup = true
 [backfill]
 calendar_api_base_url = "https://api.tradingeconomics.com"
 request_delay_ms = 1000
-

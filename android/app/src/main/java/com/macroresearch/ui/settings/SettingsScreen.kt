@@ -64,12 +64,14 @@ fun SettingsScreen(padding: PaddingValues) {
                 }
             }
         }
-        item {
-            Card {
-                Column(Modifier.padding(16.dp)) {
-                    Text(stringResource(R.string.server), fontWeight = FontWeight.Bold)
-                    Text(BuildConfig.API_BASE_URL, color = MaterialTheme.colorScheme.primary)
-                    Text(stringResource(R.string.server_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (BuildConfig.DEBUG) {
+            item {
+                Card {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(stringResource(R.string.server), fontWeight = FontWeight.Bold)
+                        Text(BuildConfig.API_BASE_URL, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.server_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
