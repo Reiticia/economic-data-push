@@ -24,6 +24,8 @@ async fn event_upsert_preserves_state_and_records_revisions() {
         currency: Some("USD".into()),
         category: "inflation".into(),
         event: "Inflation Rate YoY".into(),
+        event_zh_cn: None,
+        event_zh_tw: None,
         event_time: Utc::now() + Duration::minutes(5),
         importance: 3,
         actual: None,

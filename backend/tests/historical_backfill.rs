@@ -43,6 +43,8 @@ impl CalendarProvider for Calendar {
                 currency: Some("USD".into()),
                 category: "inflation".into(),
                 event: format!("Fixture CPI {n}"),
+                event_zh_cn: None,
+                event_zh_tw: None,
                 event_time: time,
                 importance: 3,
                 actual: Some(Decimal::new(32, 1)),
