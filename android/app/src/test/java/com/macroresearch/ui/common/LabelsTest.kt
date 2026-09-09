@@ -22,6 +22,7 @@ class LabelsTest {
         assertEquals(assetLabelResource("nasdaq100"), assetLabelResource("NASDAQ"))
         assertEquals(assetLabelResource("us10y"), assetLabelResource("US 10Y"))
         assertEquals(assetLabelResource("bitcoin"), assetLabelResource("BTC"))
+        assertEquals(R.string.asset_eurusd, assetLabelResource("eur_usd"))
         assertEquals(R.string.category_inflation, categoryLabelResource("Inflation"))
     }
 

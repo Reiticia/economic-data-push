@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.Instant
+import java.util.Locale
 
 class FormattersTest {
     @Test
@@ -24,6 +25,18 @@ class FormattersTest {
     @Test
     fun missingConsensusHasNoSurprise() {
         assertNull(event(actual = "3.2", consensus = null, unit = "%").surprise())
+    }
+
+    @Test
+    fun eventNameFollowsChineseScriptAndFallsBackToEnglish() {
+        val event = event(actual = null, consensus = null, unit = null).copy(
+            eventZhCn = "消费者价格指数同比",
+            eventZhTw = "消費者價格指數同比",
+        )
+        assertEquals("CPI YoY", event.localizedName(Locale.ENGLISH))
+        assertEquals("消费者价格指数同比", event.localizedName(Locale.SIMPLIFIED_CHINESE))
+        assertEquals("消費者價格指數同比", event.localizedName(Locale.TRADITIONAL_CHINESE))
+        assertEquals("CPI YoY", event.copy(eventZhCn = null, eventZhTw = null).localizedName(Locale.SIMPLIFIED_CHINESE))
     }
 
     private fun event(actual: String?, consensus: String?, unit: String?) = EconomicEvent(
