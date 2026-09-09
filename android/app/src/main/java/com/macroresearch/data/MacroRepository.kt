@@ -8,6 +8,7 @@ import com.macroresearch.data.model.AnalysisReport
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.EventDetailResponse
 import com.macroresearch.data.model.MarketResponse
+import com.macroresearch.data.model.MarketQuotesResponse
 import com.macroresearch.data.model.SocketEvent
 import com.macroresearch.data.remote.MacroApi
 import com.macroresearch.data.remote.MacroSocket
@@ -65,6 +66,9 @@ class MacroRepository(
     suspend fun analysis(id: Long): AnalysisReport = api.analysis(id)
 
     suspend fun market(id: Long): MarketResponse = api.market(id)
+
+    suspend fun marketQuotes(symbols: List<String>? = null): MarketQuotesResponse =
+        api.marketQuotes(symbols?.joinToString(","))
 
     suspend fun history(
         country: String? = null,

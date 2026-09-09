@@ -4,6 +4,7 @@ import com.macroresearch.data.model.AnalysisReport
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.EventDetailResponse
 import com.macroresearch.data.model.MarketResponse
+import com.macroresearch.data.model.MarketQuotesResponse
 import retrofit2.http.GET
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -28,6 +29,9 @@ interface MacroApi {
 
     @GET("api/v1/events/{id}/market")
     suspend fun market(@Path("id") id: Long): MarketResponse
+
+    @GET("api/v1/market/quotes")
+    suspend fun marketQuotes(@Query("symbols") symbols: String? = null): MarketQuotesResponse
 
     @GET("api/v1/events/history")
     suspend fun history(

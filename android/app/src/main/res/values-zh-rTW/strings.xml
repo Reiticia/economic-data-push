@@ -83,8 +83,15 @@
     <string name="treasuries">美債</string>
     <string name="crypto">加密資產</string>
     <string name="market_subtitle">總體經濟相關資產</string>
-    <string name="waiting_market_api">等待即時行情介面</string>
-    <string name="market_api_note">事件觀察期間的即時價格和漲跌已在事件詳情與分析頁面顯示。獨立市場頁需要後端提供目前報價介面。</string>
+    <string name="waiting_market_api">等待行情</string>
+    <string name="market_api_note">加密貨幣行情來自 Binance，外匯與貴金屬來自 BiQuote，股票指數與美債來自 Yahoo Finance；休市時顯示最後可用價格。</string>
+    <string name="refresh_quotes">重新整理行情</string>
+    <string name="market_live">即時</string>
+    <string name="market_closed">已休市</string>
+    <string name="market_stale">最後可用行情</string>
+    <string name="market_unavailable">行情暫時無法取得</string>
+    <string name="market_quote_meta">%1$s · %2$s</string>
+    <string name="market_day_range">最低 %1$s · 最高 %2$s</string>
     <string name="settings_subtitle">個人研究偏好</string>
     <string name="release_notifications">資料公布通知</string>
     <string name="reaction_notifications">公布後 5 / 15 分鐘市場反應</string>

@@ -84,8 +84,15 @@
     <string name="treasuries">US Treasuries</string>
     <string name="crypto">Crypto assets</string>
     <string name="market_subtitle">Macro-sensitive assets</string>
-    <string name="waiting_market_api">Awaiting live data API</string>
-    <string name="market_api_note">Event-window prices and changes are available in event details and analysis. Standalone quotes require a current-price API from the backend.</string>
+    <string name="waiting_market_api">Waiting for quote</string>
+    <string name="market_api_note">Crypto quotes use Binance, FX and precious metals use BiQuote, and equity indices and Treasuries use Yahoo Finance. Closed markets show their last available price.</string>
+    <string name="refresh_quotes">Refresh quotes</string>
+    <string name="market_live">Live</string>
+    <string name="market_closed">Market closed</string>
+    <string name="market_stale">Last available quote</string>
+    <string name="market_unavailable">Quote unavailable</string>
+    <string name="market_quote_meta">%1$s · %2$s</string>
+    <string name="market_day_range">Low %1$s · High %2$s</string>
     <string name="settings_subtitle">Your research preferences</string>
     <string name="release_notifications">Data release notifications</string>
     <string name="reaction_notifications">Market reactions at 5 / 15 minutes</string>

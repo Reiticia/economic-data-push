@@ -107,7 +107,7 @@ fun MacroApp(repository: MacroRepository) {
             composable("calendar") {
                 CalendarScreen(repository, padding) { navController.navigate("event/$it") }
             }
-            composable("market") { MarketScreen(padding) }
+            composable("market") { MarketScreen(repository, padding) }
             composable("history") {
                 HistoryScreen(repository, padding) { navController.navigate("event/$it") }
             }

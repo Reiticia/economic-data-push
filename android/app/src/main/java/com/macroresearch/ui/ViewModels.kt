@@ -8,6 +8,7 @@ import com.macroresearch.data.model.AnalysisReport
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.EventDetailResponse
 import com.macroresearch.data.model.MarketResponse
+import com.macroresearch.data.model.MarketQuotesResponse
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -37,6 +38,9 @@ class HomeViewModel(private val repository: MacroRepository) : ViewModel() {
     val refresh = _refresh.asStateFlow()
     private val _market = MutableStateFlow<MarketResponse?>(null)
     val market = _market.asStateFlow()
+    private val _liveMarket = MutableStateFlow<MarketQuotesResponse?>(null)
+    val liveMarket = _liveMarket.asStateFlow()
+    private var liveMarketRequest: Job? = null
 
     init { refresh() }
 
@@ -49,6 +53,45 @@ class HomeViewModel(private val repository: MacroRepository) : ViewModel() {
 
     fun loadMarket(eventId: Long?) = viewModelScope.launch {
         _market.value = eventId?.let { runCatching { repository.market(it) }.getOrNull() }
+    }
+
+    fun loadLiveMarket(symbols: List<String>) {
+        if (symbols.isEmpty() || liveMarketRequest?.isActive == true) return
+        liveMarketRequest = viewModelScope.launch {
+            runCatching { repository.marketQuotes(symbols) }
+                .onSuccess { _liveMarket.value = it }
+        }
+    }
+}
+
+class MarketViewModel(private val repository: MacroRepository) : ViewModel() {
+    private val symbols = listOf(
+        "nasdaq100", "sp500", "gold", "silver", "dxy",
+        "eur_usd", "us2y", "us10y", "bitcoin", "ethereum",
+    )
+    private val _state = MutableStateFlow(LoadState<MarketQuotesResponse>())
+    val state = _state.asStateFlow()
+    private var request: Job? = null
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        if (request?.isActive == true) return
+        request = viewModelScope.launch {
+            val previous = _state.value.value
+            _state.value = LoadState(value = previous, loading = true)
+            runCatching { repository.marketQuotes(symbols) }
+                .onSuccess { _state.value = LoadState(value = it, loading = false) }
+                .onFailure {
+                    _state.value = LoadState(
+                        value = previous,
+                        loading = false,
+                        error = it.message,
+                    )
+                }
+        }
     }
 }
 

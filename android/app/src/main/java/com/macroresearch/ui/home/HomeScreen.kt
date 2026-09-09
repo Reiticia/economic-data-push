@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.model.EconomicEvent
+import com.macroresearch.data.model.LiveMarketQuote
 import com.macroresearch.data.model.MarketSnapshot
 import com.macroresearch.ui.HomeViewModel
 import com.macroresearch.ui.common.EventCard
@@ -54,6 +55,7 @@ import com.macroresearch.ui.common.localizedDate as localDate
 import com.macroresearch.ui.common.localTime
 import com.macroresearch.ui.common.localizedName
 import com.macroresearch.ui.common.localizedValue as value
+import com.macroresearch.ui.market.formatMarketPrice
 import com.macroresearch.ui.theme.Upcoming
 import com.macroresearch.ui.viewModelFactory
 import kotlinx.coroutines.delay
@@ -67,6 +69,7 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
     val events by vm.events.collectAsStateWithLifecycle()
     val refresh by vm.refresh.collectAsStateWithLifecycle()
     val market by vm.market.collectAsStateWithLifecycle()
+    val liveMarket by vm.liveMarket.collectAsStateWithLifecycle()
     val selectedMarkets by repository.selectedMarkets.collectAsStateWithLifecycle()
     val now = Instant.now()
     val next = events.firstOrNull { it.importance == 3 && runCatching { Instant.parse(it.eventTime) > now }.getOrDefault(false) }
@@ -76,6 +79,12 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
             .getOrDefault(false)
     }
     LaunchedEffect(next?.id) { vm.loadMarket(next?.id) }
+    LaunchedEffect(selectedMarkets) {
+        while (true) {
+            vm.loadLiveMarket(selectedMarkets)
+            delay(30_000)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -100,7 +109,11 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
         }
 
         if (next != null) NextEventCard(next) { onEvent(next.id) }
-        MarketOverview(market?.snapshots.orEmpty(), selectedMarkets)
+        MarketOverview(
+            liveMarket?.quotes.orEmpty(),
+            market?.snapshots.orEmpty(),
+            selectedMarkets,
+        )
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(stringResource(R.string.today_events), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -121,7 +134,12 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
 }
 
 @Composable
-private fun MarketOverview(snapshots: List<MarketSnapshot>, selectedMarkets: List<String>) {
+private fun MarketOverview(
+    liveQuotes: List<LiveMarketQuote>,
+    snapshots: List<MarketSnapshot>,
+    selectedMarkets: List<String>,
+) {
+    val live = liveQuotes.associateBy { it.symbol }
     val latest = snapshots.groupBy { it.symbol }
         .mapValues { (_, values) -> values.maxByOrNull { it.timestamp } }
     val rows = marketOverviewRows(selectedMarkets)
@@ -132,7 +150,12 @@ private fun MarketOverview(snapshots: List<MarketSnapshot>, selectedMarkets: Lis
             rows.forEach { rowMarkets ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     rowMarkets.forEach { symbol ->
-                        MarketMiniCard(assetLabel(symbol), latest[symbol]?.price, Modifier.weight(1f))
+                        MarketMiniCard(
+                            label = assetLabel(symbol),
+                            liveQuote = live[symbol],
+                            fallbackPrice = latest[symbol]?.price,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }
@@ -192,12 +215,33 @@ private fun ValueColumn(label: String, value: String) = Column {
 }
 
 @Composable
-private fun MarketMiniCard(label: String, price: Double?, modifier: Modifier = Modifier) {
+private fun MarketMiniCard(
+    label: String,
+    liveQuote: LiveMarketQuote?,
+    fallbackPrice: Double?,
+    modifier: Modifier = Modifier,
+) {
+    val locale = LocalConfiguration.current.locales[0]
+    val price = liveQuote?.price ?: fallbackPrice
     Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(12.dp)) {
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(price?.let { "%,.2f".format(it) } ?: "--", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(stringResource(if (price == null) R.string.waiting_quotes else R.string.live_snapshot), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            Text(
+                price?.let { formatMarketPrice(it, locale) } ?: "--",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                stringResource(
+                    when {
+                        price == null -> R.string.waiting_quotes
+                        liveQuote?.stale == true -> R.string.market_stale
+                        else -> R.string.live_snapshot
+                    },
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
         }
     }
 }

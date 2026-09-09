@@ -110,6 +110,23 @@ data class MarketResponse(
     val reactions: List<MarketReaction>,
 )
 
+data class LiveMarketQuote(
+    val symbol: String,
+    val timestamp: String,
+    val price: Double,
+    val provider: String,
+    val changePercent: Double?,
+    val high: Double?,
+    val low: Double?,
+    val marketState: String?,
+    val stale: Boolean,
+)
+
+data class MarketQuotesResponse(
+    val quotes: List<LiveMarketQuote>,
+    val unavailable: List<String>,
+)
+
 data class SocketEvent(
     val type: String,
     val eventId: Long,
