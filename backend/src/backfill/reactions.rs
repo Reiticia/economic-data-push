@@ -11,6 +11,8 @@ pub const HORIZONS: [i64; 5] = [1, 5, 15, 30, 60];
 pub fn source(symbol: MarketSymbol) -> &'static str {
     if symbol.is_crypto() {
         "binance"
+    } else if symbol.uses_biquote() {
+        "biquote"
     } else {
         "yahoo"
     }
@@ -22,7 +24,7 @@ pub fn interval_for(
     start: DateTime<Utc>,
     now: DateTime<Utc>,
 ) -> Option<Interval> {
-    if symbol.is_crypto() || start >= now - Duration::days(7) {
+    if symbol.is_crypto() || symbol.uses_biquote() || start >= now - Duration::days(7) {
         Some(Interval::OneMinute)
     } else if start >= now - Duration::days(59) {
         Some(Interval::FiveMinutes)
@@ -201,7 +203,11 @@ mod tests {
                     .is_none()
             );
         }
-        assert!(interval_for(s, time() - Duration::days(90), time()).is_none());
+        assert_eq!(
+            interval_for(s, time() - Duration::days(90), time()),
+            Some(Interval::OneMinute)
+        );
+        assert!(interval_for(MarketSymbol::Us10y, time() - Duration::days(90), time()).is_none());
         assert_eq!(
             interval_for(MarketSymbol::Bitcoin, time() - Duration::days(90), time()),
             Some(Interval::OneMinute)

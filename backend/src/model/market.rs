@@ -71,6 +71,19 @@ impl MarketSymbol {
     pub fn is_crypto(self) -> bool {
         matches!(self, Self::Bitcoin | Self::Ethereum)
     }
+
+    pub fn uses_biquote(self) -> bool {
+        matches!(
+            self,
+            Self::Gold
+                | Self::Silver
+                | Self::Dxy
+                | Self::EurUsd
+                | Self::GbpUsd
+                | Self::UsdJpy
+                | Self::AudUsd
+        )
+    }
 }
 
 impl fmt::Display for MarketSymbol {
@@ -113,6 +126,20 @@ pub struct Quote {
     pub symbol: MarketSymbol,
     pub timestamp: DateTime<Utc>,
     pub price: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveQuote {
+    pub symbol: MarketSymbol,
+    pub timestamp: DateTime<Utc>,
+    pub price: f64,
+    pub provider: String,
+    pub change_percent: Option<f64>,
+    pub high: Option<f64>,
+    pub low: Option<f64>,
+    pub market_state: Option<String>,
+    pub stale: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

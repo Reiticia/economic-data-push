@@ -18,6 +18,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/events/{id}", get(event::detail))
         .route("/api/v1/events/{id}/analysis", get(event::analysis))
         .route("/api/v1/events/{id}/market", get(market::market))
+        .route("/api/v1/market/quotes", get(market::quotes))
         .route("/api/v1/ws", get(websocket::websocket))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

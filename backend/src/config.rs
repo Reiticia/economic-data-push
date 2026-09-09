@@ -49,7 +49,25 @@ pub struct SchedulerConfig {
 pub struct MarketConfig {
     pub yahoo_base_url: String,
     pub binance_base_url: String,
+    #[serde(default = "default_biquote_base_url")]
+    pub biquote_base_url: String,
+    #[serde(default = "default_live_quote_cache_seconds")]
+    pub live_quote_cache_seconds: u64,
+    #[serde(default = "default_live_quote_stale_seconds")]
+    pub live_quote_stale_seconds: u64,
     pub symbols: Vec<String>,
+}
+
+fn default_biquote_base_url() -> String {
+    "https://biquote.io".into()
+}
+
+fn default_live_quote_cache_seconds() -> u64 {
+    30
+}
+
+fn default_live_quote_stale_seconds() -> u64 {
+    300
 }
 
 #[derive(Clone, Debug, Deserialize)]

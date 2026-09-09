@@ -21,7 +21,10 @@ market_collect_after_minutes = 60
 [market]
 yahoo_base_url = "https://query1.finance.yahoo.com/v8/finance/chart"
 binance_base_url = "https://api.binance.com/api/v3"
-symbols = ["gold", "nasdaq100", "dxy", "us10y", "bitcoin"]
+biquote_base_url = "https://biquote.io"
+live_quote_cache_seconds = 30
+live_quote_stale_seconds = 300
+symbols = ["nasdaq100", "sp500", "gold", "silver", "dxy", "eur_usd", "us2y", "us10y", "bitcoin", "ethereum"]
 
 # OpenAI-compatible event-name translation. The API key is read from the named
 # environment variable and is never stored in this file or the database.

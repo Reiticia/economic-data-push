@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::{
     error::AppError,
     market::MarketDataProvider,
-    model::{Candle, Interval, MarketSymbol, Quote},
+    model::{Candle, Interval, LiveQuote, MarketSymbol, Quote},
 };
 
 pub struct BinanceProvider {
@@ -53,6 +53,38 @@ impl MarketDataProvider for BinanceProvider {
             symbol,
             timestamp: Utc::now(),
             price,
+        })
+    }
+
+    async fn live_quote(&self, symbol: MarketSymbol) -> Result<LiveQuote, AppError> {
+        let ticker = Self::ticker(symbol)?;
+        let response: Binance24HourTicker = self
+            .client
+            .get(format!("{}/ticker/24hr", self.base_url))
+            .query(&[("symbol", ticker)])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let number = |value: &str| {
+            f64::from_str(value)
+                .map_err(|error| AppError::Provider(format!("invalid Binance price: {error}")))
+        };
+        let timestamp = Utc
+            .timestamp_millis_opt(response.close_time)
+            .single()
+            .unwrap_or_else(Utc::now);
+        Ok(LiveQuote {
+            symbol,
+            timestamp,
+            price: number(&response.last_price)?,
+            provider: "binance".into(),
+            change_percent: Some(number(&response.price_change_percent)?),
+            high: Some(number(&response.high_price)?),
+            low: Some(number(&response.low_price)?),
+            market_state: Some("open".into()),
+            stale: false,
         })
     }
 
@@ -138,4 +170,14 @@ impl MarketDataProvider for BinanceProvider {
 #[derive(Debug, Deserialize)]
 struct BinanceTicker {
     price: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Binance24HourTicker {
+    last_price: String,
+    price_change_percent: String,
+    high_price: String,
+    low_price: String,
+    close_time: i64,
 }

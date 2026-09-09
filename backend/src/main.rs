@@ -13,7 +13,7 @@ use market_event_analyzer::{
     backfill::{BackfillRange, BackfillService, repository::BackfillRepository},
     calendar::{CalendarService, TradingEconomicsApiProvider, TradingEconomicsProvider},
     config::AppConfig,
-    market::{BinanceProvider, MarketService, YahooProvider},
+    market::{BinanceProvider, BiquoteProvider, MarketService, YahooProvider},
     model::MarketSymbol,
     repository::{AnalysisRepository, EventRepository, MarketRepository},
     scheduler,
@@ -107,6 +107,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http.clone(),
         &config.market.binance_base_url,
     ));
+    let biquote = Arc::new(BiquoteProvider::new(
+        http.clone(),
+        &config.market.biquote_base_url,
+    ));
     let symbols = config
         .market
         .symbols
@@ -114,7 +118,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|symbol| MarketSymbol::from_str(symbol))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("invalid market symbol configuration: {error}"))?;
-    let market_service = Arc::new(MarketService::new(yahoo, binance, market.clone(), symbols));
+    let market_service = Arc::new(
+        MarketService::new(yahoo, binance, market.clone(), symbols)
+            .with_biquote(biquote)
+            .with_live_quote_cache(
+                Duration::from_secs(config.market.live_quote_cache_seconds),
+                Duration::from_secs(config.market.live_quote_stale_seconds),
+            ),
+    );
     let rules = RuleEngine::from_path("rules.toml")?;
     let analysis_service = Arc::new(AnalysisService::new(
         events.clone(),
