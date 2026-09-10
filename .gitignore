@@ -1,4 +1,5 @@
 /backend/target
+/backend/dist
 /backend/data
 /.env
 /backend/config.local.toml

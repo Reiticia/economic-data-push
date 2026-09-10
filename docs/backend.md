@@ -140,10 +140,80 @@ cargo test
 
 ## 部署
 
+### Linux 服务器 (systemd，推荐)
+
+[`backend/deploy/deploy.sh`](../backend/deploy/deploy.sh) 负责构建、安装、升级、备份、健康检查和卸载。需要 root 权限、systemd，以及 Rust 1.85+（edition 2024）和 C 编译器（`build-essential`）。
+
+```bash
+# 在服务器上检出仓库后：
+cd backend/deploy
+chmod +x deploy.sh   # 仓库不跟踪可执行位时（如 Windows 检出）需要
+
+# 首次部署：构建 release 二进制并注册 systemd 服务
+sudo ./deploy.sh
+
+# 带密钥部署（事件名翻译 / 历史补采）
+sudo OPENAI_API_KEY=sk-xxx ./deploy.sh
+
+# 自定义端口、安装目录、运行用户
+sudo ./deploy.sh deploy --port 9000 --dir /srv/market-analyzer --user market
+
+# 升级：重复执行即可，会先停服 -> 备份 SQLite -> 替换二进制 -> 启动并健康检查
+sudo ./deploy.sh
+```
+
+常用子命令：
+
+| 命令 | 说明 |
+|---|---|
+| `deploy`（默认） | 构建并安装/升级服务，等价于 `install` / `upgrade` |
+| `status` | 查看 systemd 状态与 `/health` 检查结果 |
+| `logs` | `journalctl -u market-event-analyzer -f` |
+| `backfill [START END]` | 用 env 文件中的 `TE_API_KEY` 运行 `--backfill` |
+| `uninstall [--purge]` | 停止并移除服务；`--purge` 同时删除数据与备份 |
+
+关键路径与行为：
+
+- 安装目录 `/opt/market-analyzer`（二进制、`config.toml`、`rules.toml`、`data/market.db`）；运行用户 `market`。
+- 密钥只写入 `/etc/market-analyzer/market-event-analyzer.env`（`0640 root:market`），**不要**写进 TOML 或提交仓库。
+- `--translation auto`（默认）在检测不到 `OPENAI_API_KEY` 时自动关闭翻译并告警；`on` 会强制要求密钥，`off` 总是关闭。
+- 每次部署都会用仓库里的 `config.toml` 覆盖安装目录的副本，并改写 `[server] host/port` 与 `[translation] enabled`。要固化其它配置，请改仓库中的 `backend/config.toml`，不要只改 `/opt/market-analyzer/config.toml`。
+- 迁移由 `sqlx::migrate!` 编译进二进制，首次启动自动建库；升级不会清空数据。
+- 服务用信号 `SIGINT` 触发进程内的优雅退出（`KillSignal=SIGINT`）。
+- 只暴露 HTTP。生产环境请前置 Nginx/Caddy 做 TLS 与 `wss://` 转发（WebSocket 需 `Upgrade`/`Connection` 头），防火墙可参考 `sudo ufw allow 8080/tcp`。
+
+部署完成后，把 Android 端的 `API_BASE_URL` / `WS_URL`（`android/app/build.gradle.kts`）改成服务器地址，真机需使用公网或局域网可访问的域名/IP。
+
+### 用 GitHub Actions 构建二进制
+
+仓库内置 [`.github/workflows/backend-release.yml`](../.github/workflows/backend-release.yml)：推送 `v*` tag 时构建并发布 Release（同时上传产物作为 artifact），PR / 手动触发时只验证 x86_64。
+
+不想依赖 Actions 时，本地跑同一个脚本得到相同产物：
+
+```bash
+cd backend
+./scripts/build-release.sh                                    # 本机 target，默认跑测试
+./scripts/build-release.sh --musl                             # x86_64 静态链接
+./scripts/build-release.sh --target aarch64-unknown-linux-gnu # 交叉编译
+```
+
+产物在 `backend/dist/`：`market-event-analyzer-<version>-<target>.tar.gz`（二进制 + `config.toml` + `rules.toml` + `README.txt`）和对应的 `.sha256`。把它交给服务器就能跳过服务器上的 Rust / gcc：
+
+```bash
+sudo ./deploy.sh deploy --binary /path/to/market-event-analyzer
+```
+
+版本号优先级：`--version` > `$RELEASE_VERSION` > CI tag（`v1.2.3` → `1.2.3`）> `git describe` > `Cargo.toml`。glibc 目标在 Ubuntu 22.04 上构建（需 glibc ≥ 2.35）；需要兼容更老的发行版就用 musl 静态产物。交叉目标在 Actions 上失败不会阻断发布，x86_64 产物照常产出。
+
+### Docker
+
 ```bash
 cd backend
 docker build -t market-event-analyzer .
-docker run --rm -p 8080:8080 -v ./data:/app/data market-event-analyzer
+docker run --rm -p 8080:8080 \
+  -e OPENAI_API_KEY=sk-xxx \
+  -v ./data:/app/data \
+  market-event-analyzer
 ```
 
 生产使用前请确认 Trading Economics 的使用条款、目标地区访问情况和页面 DOM。页面变化只需调整 `src/calendar/trading_economics.rs`。
