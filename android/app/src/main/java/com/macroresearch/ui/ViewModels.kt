@@ -36,8 +36,6 @@ class HomeViewModel(private val repository: MacroRepository) : ViewModel() {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val _refresh = MutableStateFlow(LoadState<Unit>())
     val refresh = _refresh.asStateFlow()
-    private val _market = MutableStateFlow<MarketResponse?>(null)
-    val market = _market.asStateFlow()
     private val _liveMarket = MutableStateFlow<MarketQuotesResponse?>(null)
     val liveMarket = _liveMarket.asStateFlow()
     private var liveMarketRequest: Job? = null
@@ -49,10 +47,6 @@ class HomeViewModel(private val repository: MacroRepository) : ViewModel() {
         runCatching { repository.refreshUpcoming() }
             .onSuccess { _refresh.value = LoadState(Unit, loading = false) }
             .onFailure { _refresh.value = LoadState(loading = false, error = it.message) }
-    }
-
-    fun loadMarket(eventId: Long?) = viewModelScope.launch {
-        _market.value = eventId?.let { runCatching { repository.market(it) }.getOrNull() }
     }
 
     fun loadLiveMarket(symbols: List<String>) {
@@ -158,11 +152,6 @@ class EventDetailViewModel(
         viewModelScope.launch {
             repository.observeFollowed(id).collect { followed ->
                 _state.value = _state.value.copy(followed = followed)
-            }
-        }
-        viewModelScope.launch {
-            repository.socketEvents.collect { event ->
-                if (event.eventId == id) refresh()
             }
         }
     }

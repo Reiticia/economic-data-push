@@ -127,13 +127,3 @@ data class MarketQuotesResponse(
     val unavailable: List<String>,
 )
 
-data class SocketEvent(
-    val type: String,
-    val eventId: Long,
-    val event: String? = null,
-    val eventZhCn: String? = null,
-    val eventZhTw: String? = null,
-    val actual: String? = null,
-    val consensus: String? = null,
-)
-

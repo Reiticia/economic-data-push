@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CachedEventEntity::class, FollowedEventEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class MacroDatabase : RoomDatabase() {
@@ -18,6 +18,15 @@ abstract class MacroDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE cached_event ADD COLUMN eventZhCn TEXT")
                 db.execSQL("ALTER TABLE cached_event ADD COLUMN eventZhTw TEXT")
+            }
+        }
+
+        // Client-side calendar IDs use a semantic event key. The legacy cache used
+        // provider-specific IDs, so it must be refreshed once to avoid duplicate rows.
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DELETE FROM followed_event")
+                db.execSQL("DELETE FROM cached_event")
             }
         }
     }

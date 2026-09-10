@@ -6,6 +6,12 @@ import androidx.room.Query
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
+data class CachedTranslation(
+    val event: String,
+    val eventZhCn: String,
+    val eventZhTw: String,
+)
+
 @Dao
 interface EventDao {
     @Query("SELECT * FROM cached_event WHERE eventTime >= :from ORDER BY eventTime, importance DESC")
@@ -13,6 +19,36 @@ interface EventDao {
 
     @Query("SELECT * FROM cached_event WHERE id = :id")
     fun observeEvent(id: Long): Flow<CachedEventEntity?>
+
+    @Query("SELECT * FROM cached_event WHERE id = :id")
+    suspend fun event(id: Long): CachedEventEntity?
+
+    @Query(
+        """SELECT * FROM cached_event
+           WHERE eventTime < :before
+             AND (:country IS NULL OR country = :country)
+             AND (:category IS NULL OR LOWER(category) LIKE '%' || LOWER(:category) || '%')
+           ORDER BY eventTime DESC, importance DESC
+           LIMIT :limit OFFSET :offset""",
+    )
+    suspend fun history(
+        before: String,
+        country: String?,
+        category: String?,
+        limit: Int,
+        offset: Int,
+    ): List<CachedEventEntity>
+
+    @Query(
+        """SELECT event, eventZhCn, eventZhTw FROM cached_event
+           WHERE event IN (:names) AND eventZhCn IS NOT NULL AND eventZhTw IS NOT NULL""",
+    )
+    suspend fun translations(names: List<String>): List<CachedTranslation>
+
+    @Query(
+        "UPDATE cached_event SET eventZhCn = :zhCn, eventZhTw = :zhTw WHERE event = :name",
+    )
+    suspend fun updateTranslation(name: String, zhCn: String, zhTw: String)
 
     @Upsert
     suspend fun upsert(events: List<CachedEventEntity>)

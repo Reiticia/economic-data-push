@@ -3,9 +3,11 @@
     <cloud-backup>
         <exclude domain="database" path="macro.db-shm" />
         <exclude domain="database" path="macro.db-wal" />
+        <exclude domain="sharedpref" path="translation_credentials.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="database" path="macro.db-shm" />
         <exclude domain="database" path="macro.db-wal" />
+        <exclude domain="sharedpref" path="translation_credentials.xml" />
     </device-transfer>
 </data-extraction-rules>

@@ -1,67 +1,75 @@
 package com.macroresearch
 
 import android.app.Application
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.room.Room
 import com.google.gson.Gson
 import com.macroresearch.data.CountryPreferences
+import com.macroresearch.data.LocalAnalysisEngine
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.MarketPreferences
+import com.macroresearch.data.TranslationPreferences
 import com.macroresearch.data.local.MacroDatabase
-import com.macroresearch.data.remote.MacroApi
-import com.macroresearch.data.remote.MacroSocket
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import com.macroresearch.data.remote.DirectMarketClient
+import com.macroresearch.data.remote.TradingEconomicsClient
+import com.macroresearch.data.remote.TranslationClient
+import okhttp3.Cache
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 class MacroApplication : Application() {
     lateinit var repository: MacroRepository
         private set
 
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onCreate() {
         super.onCreate()
+        val translationPreferences = TranslationPreferences(this)
+        if (!translationPreferences.settings.value.configured) {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("en"))
+        }
+
         val gson = Gson()
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
             else HttpLoggingInterceptor.Level.NONE
         }
         val http = OkHttpClient.Builder()
+            .cache(Cache(cacheDir.resolve("http"), 20L * 1024 * 1024))
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
-            .pingInterval(30, TimeUnit.SECONDS)
+            .connectionPool(ConnectionPool(5, 5, TimeUnit.SECONDS))
+            .retryOnConnectionFailure(true)
+            .addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("User-Agent", "MacroResearch/0.2 (Android; personal research)")
+                        .build(),
+                )
+            }
             .addInterceptor(logging)
             .build()
-        val api = Retrofit.Builder()
-            .baseUrl(BuildConfig.API_BASE_URL)
-            .client(http)
-            .addConverterFactory(GsonConverterFactory.create(gson))
+        val translationHttp = http.newBuilder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(120, TimeUnit.SECONDS)
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.NANOSECONDS))
             .build()
-            .create(MacroApi::class.java)
         val database = Room.databaseBuilder(this, MacroDatabase::class.java, "macro.db")
-            .addMigrations(MacroDatabase.MIGRATION_1_2)
+            .addMigrations(MacroDatabase.MIGRATION_1_2, MacroDatabase.MIGRATION_2_3)
             .build()
-        val socket = MacroSocket(http, BuildConfig.WS_URL, gson)
         repository = MacroRepository(
-            api,
-            database.eventDao(),
-            socket,
-            CountryPreferences(this),
-            MarketPreferences(this),
+            calendarClient = TradingEconomicsClient(http),
+            marketClient = DirectMarketClient(http),
+            translationClient = TranslationClient(translationHttp, gson),
+            analysisEngine = LocalAnalysisEngine(),
+            dao = database.eventDao(),
+            countryPreferences = CountryPreferences(this),
+            marketPreferences = MarketPreferences(this),
+            translationPreferences = translationPreferences,
         )
-        repository.connectSocket()
-
-        val notifications = NotificationCenter(this)
-        applicationScope.launch {
-            repository.socketEvents.collect { event ->
-                if (repository.isFollowed(event.eventId)) notifications.show(event)
-            }
-        }
     }
 }

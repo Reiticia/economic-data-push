@@ -1,7 +1,6 @@
 package com.macroresearch.ui.common
 
 import com.macroresearch.data.model.EconomicEvent
-import com.macroresearch.data.model.SocketEvent
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Duration
@@ -18,10 +17,6 @@ fun EconomicEvent.localizedName(locale: Locale): String = localizedEventName(
     eventZhTw,
     locale,
 )
-
-fun SocketEvent.localizedName(locale: Locale): String? = event?.let {
-    localizedEventName(it, eventZhCn, eventZhTw, locale)
-}
 
 private fun localizedEventName(source: String, zhCn: String?, zhTw: String?, locale: Locale): String {
     if (locale.language != "zh") return source

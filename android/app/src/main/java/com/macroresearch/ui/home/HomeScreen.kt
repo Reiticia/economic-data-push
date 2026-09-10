@@ -43,7 +43,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.LiveMarketQuote
-import com.macroresearch.data.model.MarketSnapshot
 import com.macroresearch.ui.HomeViewModel
 import com.macroresearch.ui.common.EventCard
 import com.macroresearch.ui.common.ImportanceDots
@@ -68,7 +67,6 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
     val vm: HomeViewModel = viewModel(factory = viewModelFactory { HomeViewModel(repository) })
     val events by vm.events.collectAsStateWithLifecycle()
     val refresh by vm.refresh.collectAsStateWithLifecycle()
-    val market by vm.market.collectAsStateWithLifecycle()
     val liveMarket by vm.liveMarket.collectAsStateWithLifecycle()
     val selectedMarkets by repository.selectedMarkets.collectAsStateWithLifecycle()
     val now = Instant.now()
@@ -78,7 +76,6 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
         runCatching { Instant.parse(it.eventTime).atZone(ZoneId.systemDefault()).toLocalDate() == LocalDate.now() }
             .getOrDefault(false)
     }
-    LaunchedEffect(next?.id) { vm.loadMarket(next?.id) }
     LaunchedEffect(selectedMarkets) {
         while (true) {
             vm.loadLiveMarket(selectedMarkets)
@@ -111,7 +108,6 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
         if (next != null) NextEventCard(next) { onEvent(next.id) }
         MarketOverview(
             liveMarket?.quotes.orEmpty(),
-            market?.snapshots.orEmpty(),
             selectedMarkets,
         )
 
@@ -136,12 +132,9 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
 @Composable
 private fun MarketOverview(
     liveQuotes: List<LiveMarketQuote>,
-    snapshots: List<MarketSnapshot>,
     selectedMarkets: List<String>,
 ) {
     val live = liveQuotes.associateBy { it.symbol }
-    val latest = snapshots.groupBy { it.symbol }
-        .mapValues { (_, values) -> values.maxByOrNull { it.timestamp } }
     val rows = marketOverviewRows(selectedMarkets)
     Column {
         Text(stringResource(R.string.market_overview), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -153,7 +146,6 @@ private fun MarketOverview(
                         MarketMiniCard(
                             label = assetLabel(symbol),
                             liveQuote = live[symbol],
-                            fallbackPrice = latest[symbol]?.price,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -218,11 +210,10 @@ private fun ValueColumn(label: String, value: String) = Column {
 private fun MarketMiniCard(
     label: String,
     liveQuote: LiveMarketQuote?,
-    fallbackPrice: Double?,
     modifier: Modifier = Modifier,
 ) {
     val locale = LocalConfiguration.current.locales[0]
-    val price = liveQuote?.price ?: fallbackPrice
+    val price = liveQuote?.price
     Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(12.dp)) {
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
