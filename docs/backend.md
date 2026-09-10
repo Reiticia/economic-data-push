@@ -147,7 +147,7 @@ cargo test
 ```bash
 # 在服务器上检出仓库后：
 cd backend/deploy
-chmod +x deploy.sh   # 仓库不跟踪可执行位时（如 Windows 检出）需要
+chmod +x deploy.sh   # 仅在可执行位丢失时（例如从 Windows 直接拷贝文件而非 git clone）需要
 
 # 首次部署：构建 release 二进制并注册 systemd 服务
 sudo ./deploy.sh
@@ -196,6 +196,8 @@ cd backend
 ./scripts/build-release.sh --musl                             # x86_64 静态链接
 ./scripts/build-release.sh --target aarch64-unknown-linux-gnu # 交叉编译
 ```
+
+> 若脚本没有可执行位（本仓库在 `core.filemode=false` 的环境下新增文件会出现这种情况），用 `bash scripts/build-release.sh` 调用即可。
 
 产物在 `backend/dist/`：`market-event-analyzer-<version>-<target>.tar.gz`（二进制 + `config.toml` + `rules.toml` + `README.txt`）和对应的 `.sha256`。把它交给服务器就能跳过服务器上的 Rust / gcc：
 

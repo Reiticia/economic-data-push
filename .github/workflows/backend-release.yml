@@ -80,7 +80,7 @@ jobs:
       - name: 构建并打包
         working-directory: backend
         run: |
-          ./scripts/build-release.sh \
+          bash ./scripts/build-release.sh \
             --target "${{ matrix.target }}" \
             --out "$GITHUB_WORKSPACE/dist" \
             --no-tests
