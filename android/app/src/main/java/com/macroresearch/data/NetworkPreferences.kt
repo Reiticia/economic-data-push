@@ -7,22 +7,25 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URI
 
-/** Optional HTTP CONNECT proxy for public calendar requests only; never routes AI keys. */
-class CalendarNetworkPreferences(context: Context) {
+/**
+ * Optional HTTP CONNECT proxy for public data requests (calendar and market/quotes). AI and
+ * translation traffic carrying the user's key deliberately stays on the direct connection.
+ */
+class NetworkPreferences(context: Context) {
     private val preferences = context.getSharedPreferences("calendar_network", Context.MODE_PRIVATE)
     private val _address = MutableStateFlow(preferences.getString("proxy", "").orEmpty())
     val address = _address.asStateFlow()
 
     fun save(address: String) {
-        val clean = normalizeCalendarProxy(address)
+        val clean = normalizeProxyAddress(address)
         preferences.edit().putString("proxy", clean).apply()
         _address.value = clean
     }
 
-    fun proxy(): Proxy? = calendarProxy(_address.value)
+    fun proxy(): Proxy? = httpProxy(_address.value)
 }
 
-internal fun normalizeCalendarProxy(value: String): String {
+internal fun normalizeProxyAddress(value: String): String {
     val clean = value.trim()
     if (clean.isEmpty()) return ""
     val uri = URI(if ("://" in clean) clean else "http://$clean")
@@ -32,8 +35,8 @@ internal fun normalizeCalendarProxy(value: String): String {
     return uri.toASCIIString()
 }
 
-internal fun calendarProxy(address: String): Proxy? {
+internal fun httpProxy(address: String): Proxy? {
     if (address.isBlank()) return null // Keep the system proxy policy by default.
-    val uri = URI(normalizeCalendarProxy(address))
+    val uri = URI(normalizeProxyAddress(address))
     return Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved(uri.host, uri.port))
 }

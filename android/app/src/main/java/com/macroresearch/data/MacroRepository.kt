@@ -47,7 +47,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 class MacroRepository(
     private val calendarClient: EconomicCalendarClient,
-    private val calendarNetwork: CalendarNetworkPreferences,
+    private val networkPreferences: NetworkPreferences,
     private val analysisPreferences: AnalysisPreferences,
     private val marketClient: DirectMarketClient,
     private val translationClient: TranslationClient,
@@ -64,7 +64,7 @@ class MacroRepository(
     val translationSettings: StateFlow<TranslationSettings> = translationPreferences.settings
     private val _translationError = MutableStateFlow<String?>(null)
     val translationError = _translationError.asStateFlow()
-    val calendarProxy = calendarNetwork.address
+    val proxyAddress = networkPreferences.address
     val analysisMethod: StateFlow<AnalysisMethod> = analysisPreferences.method
 
     fun setAnalysisMethod(method: AnalysisMethod) = analysisPreferences.setMethod(method)
@@ -73,7 +73,7 @@ class MacroRepository(
     val calendarWarning = _calendarWarning.asStateFlow()
 
     fun saveCalendarProxy(address: String) {
-        calendarNetwork.save(address)
+        networkPreferences.save(address)
         historySyncedAt = 0L
     }
 

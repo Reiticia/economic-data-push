@@ -6,7 +6,7 @@ import androidx.core.os.LocaleListCompat
 import androidx.room.Room
 import com.google.gson.Gson
 import com.macroresearch.data.AnalysisPreferences
-import com.macroresearch.data.CalendarNetworkPreferences
+import com.macroresearch.data.NetworkPreferences
 import com.macroresearch.data.CountryPreferences
 import com.macroresearch.data.LocalAnalysisEngine
 import com.macroresearch.data.MacroRepository
@@ -67,13 +67,13 @@ class MacroApplication : Application() {
         if (BuildConfig.DEBUG) {
             AiAnalysisClient.responseObserver = { android.util.Log.d("AiAnalysisRaw", it.take(4000)) }
         }
-        val calendarNetwork = CalendarNetworkPreferences(this)
+        val networkPreferences = NetworkPreferences(this)
         val analysisPreferences = AnalysisPreferences(this)
         repository = MacroRepository(
-            calendarClient = EconomicCalendarClient(http, proxy = calendarNetwork::proxy),
-            calendarNetwork = calendarNetwork,
+            calendarClient = EconomicCalendarClient(http, proxy = networkPreferences::proxy),
+            marketClient = DirectMarketClient(http, proxy = networkPreferences::proxy),
+            networkPreferences = networkPreferences,
             analysisPreferences = analysisPreferences,
-            marketClient = DirectMarketClient(http),
             translationClient = TranslationClient(translationHttp, gson),
             aiAnalysisClient = AiAnalysisClient(translationHttp, gson),
             analysisEngine = LocalAnalysisEngine(),

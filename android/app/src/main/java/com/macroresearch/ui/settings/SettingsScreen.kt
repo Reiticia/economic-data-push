@@ -87,7 +87,7 @@ fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
             contentPadding = PaddingValues(bottom = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { CalendarNetworkSettings(repository) }
+            item { DataNetworkSettings(repository) }
             item { TranslationApiSettings(repository) }
             item { AnalysisMethodSettings(repository) }
             item { LanguageSettings(translation.configured) }
@@ -108,34 +108,34 @@ fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
 }
 
 @Composable
-private fun CalendarNetworkSettings(repository: MacroRepository) {
-    val configured by repository.calendarProxy.collectAsStateWithLifecycle()
+private fun DataNetworkSettings(repository: MacroRepository) {
+    val configured by repository.proxyAddress.collectAsStateWithLifecycle()
     var address by rememberSaveable(configured) { mutableStateOf(configured) }
     var invalid by rememberSaveable { mutableStateOf(false) }
     var saved by rememberSaveable { mutableStateOf(false) }
     Card {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.calendar_network), fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.calendar_proxy_note), style = MaterialTheme.typography.bodySmall,
+            Text(stringResource(R.string.data_network), fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.data_proxy_note), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = address,
                 onValueChange = { address = it; invalid = false; saved = false },
-                label = { Text(stringResource(R.string.calendar_proxy)) },
+                label = { Text(stringResource(R.string.data_proxy)) },
                 placeholder = { Text("host:port") },
                 singleLine = true,
                 isError = invalid,
                 modifier = Modifier.fillMaxWidth(),
             )
-            if (invalid) Text(stringResource(R.string.calendar_proxy_invalid), color = MaterialTheme.colorScheme.error)
-            if (saved) Text(stringResource(R.string.calendar_proxy_saved), color = MaterialTheme.colorScheme.primary)
+            if (invalid) Text(stringResource(R.string.data_proxy_invalid), color = MaterialTheme.colorScheme.error)
+            if (saved) Text(stringResource(R.string.data_proxy_saved), color = MaterialTheme.colorScheme.primary)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = {
                     repository.saveCalendarProxy("")
                     address = ""
                     invalid = false
                     saved = true
-                }) { Text(stringResource(R.string.calendar_proxy_clear)) }
+                }) { Text(stringResource(R.string.data_proxy_clear)) }
                 Button(onClick = {
                     runCatching { repository.saveCalendarProxy(address) }
                         .onSuccess { invalid = false; saved = true }

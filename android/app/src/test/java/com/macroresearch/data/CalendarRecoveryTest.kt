@@ -129,11 +129,11 @@ class CalendarRecoveryTest {
     }
 
     @Test fun proxyIsOptionalScopedAndValidated() {
-        assertNull(calendarProxy(""))
-        assertEquals("http://127.0.0.1:17890", normalizeCalendarProxy(" 127.0.0.1:17890 "))
-        assertEquals(Proxy.Type.HTTP, calendarProxy("localhost:8080")!!.type())
+        assertNull(httpProxy(""))
+        assertEquals("http://127.0.0.1:17890", normalizeProxyAddress(" 127.0.0.1:17890 "))
+        assertEquals(Proxy.Type.HTTP, httpProxy("localhost:8080")!!.type())
         for (invalid in listOf("host", "host:0", "host:65536", "https://host:443", "user:pass@host:8080", "host:8080/path")) {
-            assertTrue(invalid, runCatching { normalizeCalendarProxy(invalid) }.isFailure)
+            assertTrue(invalid, runCatching { normalizeProxyAddress(invalid) }.isFailure)
         }
     }
 
