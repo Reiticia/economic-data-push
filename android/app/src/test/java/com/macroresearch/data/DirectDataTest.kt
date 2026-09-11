@@ -5,7 +5,15 @@ import com.google.gson.Gson
 import com.macroresearch.data.remote.AiAnalysisClient
 import com.macroresearch.data.remote.EconomicCalendarClient
 import com.macroresearch.data.remote.TranslationClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -14,6 +22,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.concurrent.TimeUnit
 
 class DirectDataTest {
     @Test
@@ -100,7 +109,8 @@ class DirectDataTest {
         val reserves = events.first { it.currency == "CHF" }
         assertEquals("768000000000", reserves.previous)
         assertEquals("currency", reserves.unit)
-        assertEquals("scheduled", reserves.status)
+        // Elapsed time is not evidence that a numeric release value was retrieved.
+        assertEquals("data_unavailable", reserves.status)
     }
 
     @Test
@@ -129,6 +139,35 @@ class DirectDataTest {
             listOf("model-one", "model-two"),
             client.parseModelsResponse("""{"models":["model-two",{"name":"model-one"}]}"""),
         )
+    }
+
+    @Test
+    fun cancellingTranslationStopsTheInFlightHttpCall() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        server.start()
+        try {
+            val client = TranslationClient(
+                OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS).build(),
+                Gson(),
+            )
+            val settings = TranslationSettings(
+                configured = true,
+                baseUrl = server.url("v1").toString().removeSuffix("/"),
+                model = "test-model",
+            )
+            val request = launch(Dispatchers.IO) {
+                client.translate(listOf("Existing Home Sales"), settings, "test-key")
+            }
+
+            assertTrue(server.takeRequest(5, TimeUnit.SECONDS) != null)
+            withTimeout(2_000) { request.cancelAndJoin() }
+
+            assertTrue(request.isCancelled)
+            assertEquals(1, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
     }
 
     @Test

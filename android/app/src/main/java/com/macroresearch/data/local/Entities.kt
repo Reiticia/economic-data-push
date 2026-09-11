@@ -3,6 +3,7 @@ package com.macroresearch.data.local
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.macroresearch.data.model.EconomicEvent
+import com.macroresearch.data.model.currentStatus
 
 @Entity(tableName = "cached_event")
 data class CachedEventEntity(
@@ -53,4 +54,4 @@ fun EconomicEvent.asEntity() = CachedEventEntity(
 fun CachedEventEntity.asExternalModel() = EconomicEvent(
     id, provider, providerId, releaseGroupId, country, currency, category, event, eventZhCn, eventZhTw,
     eventTime, importance, actual, previous, consensus, forecast, unit, status,
-)
+).let { it.copy(status = it.currentStatus()) }

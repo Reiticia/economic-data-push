@@ -108,6 +108,7 @@ internal fun importanceLabelResource(importance: Int): Int = when (importance) {
 @StringRes
 internal fun statusLabelResource(status: String): Int? = when (status) {
     "scheduled" -> R.string.status_scheduled
+    "data_unavailable" -> R.string.status_data_unavailable
     "watching" -> R.string.status_watching
     "released" -> R.string.status_released
     "collecting_market_data" -> R.string.status_collecting

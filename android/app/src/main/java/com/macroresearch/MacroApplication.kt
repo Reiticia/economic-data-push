@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.room.Room
 import com.google.gson.Gson
+import com.macroresearch.data.CalendarNetworkPreferences
 import com.macroresearch.data.CountryPreferences
 import com.macroresearch.data.LocalAnalysisEngine
 import com.macroresearch.data.MacroRepository
@@ -62,8 +63,10 @@ class MacroApplication : Application() {
         val database = Room.databaseBuilder(this, MacroDatabase::class.java, "macro.db")
             .addMigrations(MacroDatabase.MIGRATION_1_2, MacroDatabase.MIGRATION_2_3, MacroDatabase.MIGRATION_3_4)
             .build()
+        val calendarNetwork = CalendarNetworkPreferences(this)
         repository = MacroRepository(
-            calendarClient = EconomicCalendarClient(http),
+            calendarClient = EconomicCalendarClient(http, proxy = calendarNetwork::proxy),
+            calendarNetwork = calendarNetwork,
             marketClient = DirectMarketClient(http),
             translationClient = TranslationClient(translationHttp, gson),
             aiAnalysisClient = AiAnalysisClient(translationHttp, gson),

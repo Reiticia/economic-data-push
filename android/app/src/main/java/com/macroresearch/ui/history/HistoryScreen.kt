@@ -41,6 +41,7 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
     val state by vm.state.collectAsStateWithLifecycle()
     val selected by vm.category.collectAsStateWithLifecycle()
     val hasMore by vm.hasMore.collectAsStateWithLifecycle()
+    val warning by repository.calendarWarning.collectAsStateWithLifecycle()
     val events = state.value.orEmpty()
     // Translations are keyed by event name and can be corrected on the detail screen;
     // re-read them whenever this screen is shown again so corrections appear immediately.
@@ -78,6 +79,7 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
+            warning?.let { item { Text(stringResource(R.string.calendar_source_warning, it), color = MaterialTheme.colorScheme.error) } }
             state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
             items(events, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }, showDate = true) }
             if (state.loading) item { LoadingHint() }

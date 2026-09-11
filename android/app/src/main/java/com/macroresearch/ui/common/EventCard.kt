@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.macroresearch.data.model.EconomicEvent
+import com.macroresearch.data.model.currentStatus
 import com.macroresearch.ui.theme.AssetDown
 import com.macroresearch.ui.theme.AssetUp
 import com.macroresearch.ui.theme.Dovish
@@ -32,6 +33,7 @@ fun EventCard(
     showDate: Boolean = false,
 ) {
     val surprise = event.surprise()
+    val status = event.currentStatus()
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
@@ -50,7 +52,7 @@ fun EventCard(
                 // Lists that span several days (history) need the date; day views already show it in the header.
                 val timestamp = if (showDate) "${event.localizedShortDate()}  ${event.localTime()}" else event.localTime()
                 Text("$timestamp  ${flag(event.country)}  ${countryLabel(event.country)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(statusLabel(event.status), color = statusColor(event.status), style = MaterialTheme.typography.labelMedium)
+                Text(statusLabel(status), color = statusColor(status), style = MaterialTheme.typography.labelMedium)
             }
             Text(event.localizedName(LocalConfiguration.current.locales[0]), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (event.actual == null) {

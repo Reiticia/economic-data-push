@@ -52,8 +52,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.model.EconomicEvent
+import com.macroresearch.data.model.currentStatus
 import com.macroresearch.data.model.MarketResponse
 import com.macroresearch.ui.EventDetailViewModel
+import com.macroresearch.ui.ReleaseFetchOutcome
 import com.macroresearch.ui.common.assetLabel
 import com.macroresearch.ui.common.categoryLabel
 import com.macroresearch.ui.common.countryLabel
@@ -69,6 +71,8 @@ import com.macroresearch.ui.theme.AssetDown
 import com.macroresearch.ui.theme.AssetUp
 import com.macroresearch.ui.theme.Upcoming
 import com.macroresearch.ui.viewModelFactory
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Duration
@@ -86,6 +90,7 @@ fun EventDetailScreen(
     val vm: EventDetailViewModel = viewModel(key = "event-$id", factory = viewModelFactory { EventDetailViewModel(id, repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     val event = state.detail?.event
+    val warning by repository.calendarWarning.collectAsStateWithLifecycle()
     val locale = LocalConfiguration.current.locales[0]
     Scaffold(
         topBar = {
@@ -115,6 +120,11 @@ fun EventDetailScreen(
                     onAnalysis = onAnalysis,
                     onHistory = onHistory,
                     onFixTranslation = { showCorrection = true },
+                    warning = warning,
+                    releaseFetching = state.releaseFetching,
+                    releaseOutcome = state.releaseOutcome,
+                    releaseError = state.releaseError,
+                    onFetchRelease = vm::fetchRelease,
                 )
                 if (showCorrection) {
                     TranslationCorrectionDialog(
@@ -137,6 +147,11 @@ private fun EventContent(
     onAnalysis: () -> Unit,
     onHistory: () -> Unit,
     onFixTranslation: () -> Unit,
+    warning: String?,
+    releaseFetching: Boolean,
+    releaseOutcome: ReleaseFetchOutcome?,
+    releaseError: String?,
+    onFetchRelease: () -> Unit,
 ) {
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -159,6 +174,17 @@ private fun EventContent(
             }
         }
         item { CountdownCard(event) }
+        if (event.currentStatus() == "data_unavailable") {
+            item {
+                ReleaseRetryCard(
+                    fetching = releaseFetching,
+                    outcome = releaseOutcome,
+                    error = releaseError,
+                    warning = warning,
+                    onFetch = onFetchRelease,
+                )
+            }
+        }
         item { ReleaseDataCard(event) }
         item { EventIntroduction(event) }
         item { MarketTrackingCard(event, market) }
@@ -166,7 +192,9 @@ private fun EventContent(
             Button(
                 onClick = onAnalysis,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = event.status in setOf("released", "collecting_market_data", "analyzing", "completed", "historical"),
+                // A past timestamp alone is not a published data release (for example speeches
+                // never have an actual value). Only events with a result can be analyzed.
+                enabled = event.actual != null,
             ) { Text(stringResource(if (event.status in setOf("completed", "historical")) R.string.view_analysis else R.string.view_analysis_progress)) }
         }
         item {
@@ -178,6 +206,61 @@ private fun EventContent(
             }
         }
         item { Column(Modifier.padding(bottom = 24.dp)) {} }
+    }
+}
+
+/** Manual recovery for an elapsed event whose published value is still missing. */
+@Composable
+private fun ReleaseRetryCard(
+    fetching: Boolean,
+    outcome: ReleaseFetchOutcome?,
+    error: String?,
+    warning: String?,
+    onFetch: () -> Unit,
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                stringResource(R.string.release_data_missing),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            outcome?.let {
+                Text(
+                    stringResource(
+                        if (it == ReleaseFetchOutcome.RETRIEVED) R.string.release_fetch_updated
+                        else R.string.release_fetch_missing,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (it == ReleaseFetchOutcome.RETRIEVED) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error,
+                )
+            }
+            // The source warning explains why a retry still could not fill the value.
+            warning?.let {
+                Text(
+                    stringResource(R.string.calendar_source_warning, it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            error?.let {
+                Text(
+                    stringResource(R.string.release_fetch_failed, it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            OutlinedButton(onClick = onFetch, enabled = !fetching, modifier = Modifier.fillMaxWidth()) {
+                if (fetching) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(if (fetching) R.string.release_fetching else R.string.release_fetch_action))
+            }
+        }
     }
 }
 
@@ -193,11 +276,17 @@ private fun TranslationCorrectionDialog(
     var zhTw by rememberSaveable(event.id) { mutableStateOf(event.eventZhTw.orEmpty()) }
     var working by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
+    var operation by remember { mutableStateOf<Job?>(null) }
     val configured = repository.translationSettings.collectAsStateWithLifecycle().value.configured
     val retranslateFailed = stringResource(R.string.retranslate_failed)
 
+    fun cancelAndDismiss() {
+        operation?.cancel()
+        onDismiss()
+    }
+
     AlertDialog(
-        onDismissRequest = { if (!working) onDismiss() },
+        onDismissRequest = ::cancelAndDismiss,
         title = { Text(stringResource(R.string.translation_correction), fontWeight = FontWeight.Bold) },
         text = {
             Column(
@@ -229,16 +318,21 @@ private fun TranslationCorrectionDialog(
                 if (configured) {
                     OutlinedButton(
                         onClick = {
-                            scope.launch {
-                                working = true
-                                error = null
-                                runCatching { repository.retranslateEventName(event) }
-                                    .onSuccess {
-                                        onChanged()
-                                        onDismiss()
-                                    }
-                                    .onFailure { error = it.message ?: retranslateFailed }
-                                working = false
+                            working = true
+                            error = null
+                            operation = scope.launch {
+                                try {
+                                    repository.retranslateEventName(event)
+                                    onChanged()
+                                    onDismiss()
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (failure: Exception) {
+                                    error = failure.message ?: retranslateFailed
+                                } finally {
+                                    working = false
+                                    operation = null
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -274,23 +368,28 @@ private fun TranslationCorrectionDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = { if (!working) onDismiss() }) {
+            TextButton(onClick = ::cancelAndDismiss) {
                 Text(stringResource(R.string.cancel))
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    scope.launch {
-                        working = true
-                        error = null
-                        runCatching { repository.correctTranslation(event, zhCn, zhTw) }
-                            .onSuccess {
-                                onChanged()
-                                onDismiss()
-                            }
-                            .onFailure { error = it.message }
-                        working = false
+                    working = true
+                    error = null
+                    operation = scope.launch {
+                        try {
+                            repository.correctTranslation(event, zhCn, zhTw)
+                            onChanged()
+                            onDismiss()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            error = failure.message
+                        } finally {
+                            working = false
+                            operation = null
+                        }
                     }
                 },
                 enabled = zhCn.isNotBlank() && zhTw.isNotBlank() && !working,
@@ -303,15 +402,18 @@ private fun TranslationCorrectionDialog(
 private fun CountdownCard(event: EconomicEvent) {
     var now by remember { mutableStateOf(Instant.now()) }
     LaunchedEffect(event.id) { while (true) { now = Instant.now(); delay(1_000) } }
+    val awaitingFutureRelease = event.actual == null && runCatching {
+        Instant.parse(event.eventTime).isAfter(now)
+    }.getOrDefault(false)
     Card(colors = CardDefaults.cardColors(
         containerColor = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     )) {
         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text(stringResource(if (event.actual == null) R.string.release_countdown else R.string.data_status), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(if (awaitingFutureRelease) R.string.release_countdown else R.string.data_status), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    if (event.actual == null) countdown(event.eventTime, now) else statusLabel(event.status),
+                    if (awaitingFutureRelease) countdown(event.eventTime, now) else statusLabel(event.currentStatus(now)),
                     style = MaterialTheme.typography.headlineMedium,
                     color = if (event.status == "watching") Upcoming else MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,

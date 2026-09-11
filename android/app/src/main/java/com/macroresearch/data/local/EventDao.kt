@@ -3,6 +3,7 @@ package com.macroresearch.data.local
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
@@ -49,6 +50,23 @@ interface EventDao {
         "UPDATE cached_event SET eventZhCn = :zhCn, eventZhTw = :zhTw WHERE event = :name",
     )
     suspend fun updateTranslation(name: String, zhCn: String, zhTw: String)
+
+    @Query("SELECT * FROM cached_event WHERE eventTime >= :from AND eventTime <= :to")
+    suspend fun cachedRange(from: String, to: String): List<CachedEventEntity>
+
+    @Transaction
+    suspend fun mergeCalendar(events: List<CachedEventEntity>): List<CachedEventEntity> {
+        if (events.isEmpty()) return events
+        val cached = cachedRange(events.minOf { it.eventTime }, events.maxOf { it.eventTime })
+        val merged = mergeCalendarRows(events, cached)
+        // Fill weekly-schedule rows whose indicator was published under a different title.
+        val byId = LinkedHashMap<Long, CachedEventEntity>()
+        merged.forEach { byId[it.id] = it }
+        fillMissingValues(merged + cached).forEach { byId[it.id] = it }
+        // Always persist: skipping this write would drop every freshly fetched event.
+        upsert(byId.values.toList())
+        return merged.map { byId[it.id] ?: it }
+    }
 
     @Upsert
     suspend fun upsert(events: List<CachedEventEntity>)

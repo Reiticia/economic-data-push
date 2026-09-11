@@ -4,12 +4,16 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.macroresearch.data.model.EconomicEvent
+import com.macroresearch.data.model.releaseStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.CacheControl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.math.BigDecimal
+import java.net.Proxy
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
@@ -26,29 +30,57 @@ import java.util.Locale
  * returns nothing and the requested range overlaps the current week, the client falls
  * back to the Forex Factory weekly JSON feed. Neither source needs an API key.
  */
+data class CalendarFetchResult(val events: List<EconomicEvent>, val warning: String? = null)
+
 class EconomicCalendarClient(
     private val client: OkHttpClient,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    private val proxy: () -> Proxy? = { null },
+    private val primaryUrl: String = TRADING_VIEW_URL,
+    private val fallbackUrl: String = FOREX_FACTORY_URL,
 ) {
     suspend fun events(
         start: LocalDate,
         end: LocalDate,
         countryCodes: Collection<String>? = null,
-    ): List<EconomicEvent> =
-        withContext(Dispatchers.IO) {
-            require(!end.isBefore(start)) { "Calendar end date is before start date" }
-            val now = Instant.now()
-            val primary = runCatching { fetchTradingView(start, end, countryCodes, now) }
-            val primaryEvents = primary.getOrNull()
-            if (!primaryEvents.isNullOrEmpty()) return@withContext primaryEvents
-            // The Forex Factory feed only carries the current week; other ranges simply
-            // return an empty list. If both sources fail, surface the primary error.
-            runCatching { fetchForexFactory(start, end, now) }.getOrElse { fallbackError ->
-                throw primary.exceptionOrNull() ?: fallbackError
-            }
+    ): List<EconomicEvent> = fetch(start, end, countryCodes).events
+
+    suspend fun fetch(
+        start: LocalDate,
+        end: LocalDate,
+        countryCodes: Collection<String>? = null,
+    ): CalendarFetchResult = withContext(Dispatchers.IO) {
+        require(!end.isBefore(start)) { "Calendar end date is before start date" }
+        val now = Instant.now()
+        val http = proxy()?.let { client.newBuilder().proxy(it).build() } ?: client
+        var primaryError: Exception? = null
+        val primaryEvents = try {
+            fetchTradingView(http, start, end, countryCodes, now)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            primaryError = error
+            emptyList()
         }
+        if (primaryEvents.isNotEmpty()) return@withContext CalendarFetchResult(primaryEvents)
+        val fallback = try {
+            fetchForexFactory(http, start, end, now)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            throw primaryError ?: error
+        }
+        // A weekly schedule is not a successful historical result sync. Expose degradation
+        // even when it returned rows, so missing actuals are never mistaken for future releases.
+        CalendarFetchResult(
+            fallback,
+            primaryError?.let { "${it.javaClass.simpleName}: ${it.message}" }
+                ?: if (fallback.isNotEmpty()) "Primary source returned no events; weekly schedule only" else null,
+        )
+    }
 
     private fun fetchTradingView(
+        http: OkHttpClient,
         start: LocalDate,
         end: LocalDate,
         countryCodes: Collection<String>?,
@@ -58,7 +90,7 @@ class EconomicCalendarClient(
         // `to` is an inclusive instant: the last second of the local day, so the window covers
         // exactly the requested local days instead of pulling in the next day's all-day rows.
         val to = end.plusDays(1).atStartOfDay(zone).toInstant().minusSeconds(1)
-        val builder = TRADING_VIEW_URL.toHttpUrl().newBuilder()
+        val builder = primaryUrl.toHttpUrl().newBuilder()
             .addQueryParameter("from", DateTimeFormatter.ISO_INSTANT.format(from))
             .addQueryParameter("to", DateTimeFormatter.ISO_INSTANT.format(to))
         countryCodes?.takeIf { it.isNotEmpty() }
@@ -67,19 +99,21 @@ class EconomicCalendarClient(
             .url(builder.build())
             .header("Accept", "application/json")
             .header("Origin", "https://www.tradingview.com")
+            .cacheControl(CacheControl.FORCE_NETWORK)
             .build()
-        client.newCall(request).execute().use { response ->
+        http.newCall(request).execute().use { response ->
             check(response.isSuccessful) { "Calendar provider returned HTTP ${response.code}" }
             return parseTradingView(response.body?.string().orEmpty(), now)
         }
     }
 
-    private fun fetchForexFactory(start: LocalDate, end: LocalDate, now: Instant): List<EconomicEvent> {
+    private fun fetchForexFactory(http: OkHttpClient, start: LocalDate, end: LocalDate, now: Instant): List<EconomicEvent> {
         val request = Request.Builder()
-            .url(FOREX_FACTORY_URL)
+            .url(fallbackUrl)
             .header("Accept", "application/json")
+            .cacheControl(CacheControl.FORCE_NETWORK)
             .build()
-        client.newCall(request).execute().use { response ->
+        http.newCall(request).execute().use { response ->
             check(response.isSuccessful) { "Fallback calendar returned HTTP ${response.code}" }
             return parseForexFactory(response.body?.string().orEmpty(), now, start, end)
         }
@@ -187,11 +221,8 @@ class EconomicCalendarClient(
         }.filterNotNull().distinctBy(EconomicEvent::id).sortedBy(EconomicEvent::eventTime)
     }
 
-    private fun eventStatus(actual: String?, eventTime: Instant, now: Instant): String = when {
-        actual == null -> "scheduled"
-        eventTime.isBefore(now.minusSeconds(86_400)) -> "historical"
-        else -> "released"
-    }
+    private fun eventStatus(actual: String?, eventTime: Instant, now: Instant): String =
+        releaseStatus(actual, eventTime, now)
 
     private fun String?.normalized(): String? = this?.trim()?.takeUnless(String::isEmpty)
 

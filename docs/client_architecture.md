@@ -29,7 +29,15 @@ MacroRepository
 
 TradingView 接口失败或返回空、且请求范围与当前周重叠时，回退请求 Forex Factory 公开周度 JSON（`nfs.faireconomy.media/ff_calendar_thisweek.json`，同样无需 Key），按 impact Low / Medium / High / Holiday 映射重要度，并将带单位字符串（如 `0.2%`、`768B`）归一化为数值与单位，同样把单一预期值写入 `consensus` 与 `forecast`。两个来源都不单独提供第二套共识值，属于已知数据边界。
 
-事件 ID 由 provider ID 的 SHA-256 摘要稳定生成，以便刷新时 Room 可以覆盖同一事件。应用更新后首次刷新会清理旧 `trading_economics` 数据源的缓存行，避免同一事件重复展示。
+事件 ID 初始由 provider ID 的 SHA-256 摘要生成。主源恢复后，按国家、精确发布时间和明确的标题别名匹配已有周历事件（例如 Core PPI m/m / Core PPI MoM），仅在匹配唯一时原位补齐数值，保留旧 ID、关注和译文；不模糊匹配、不删除未匹配记录。后续按 provider / providerId 查找保留的 ID。主源已有实际值不会被回退周历覆盖；AI 翻译仅更新译名列，不再回写启动翻译时的整条旧事件快照。应用更新后首次刷新仍会清理旧 `trading_economics` 数据源的缓存行。
+
+回退周历与主源对同一指标使用不同标题，是历史记录长期缺失公布值的主因。因此维护一份**封闭且逐条核对过的同义表**（如 Core CPI m/m ↔ Core Inflation Rate MoM、CPI m/m ↔ Inflation Rate MoM、Crude Oil Inventories ↔ EIA Crude Oil Stocks Change、Natural Gas Storage ↔ EIA Natural Gas Stocks Change、Final Wholesale Inventories m/m ↔ Wholesale Inventories MoM、Prelim UoM Consumer Sentiment ↔ Michigan Consumer Sentiment Prel），每次合并（日历 / 历史 / 首页 / 手动重试）都把同一次发生（国家 + 精确时刻 + 规范化标题）的主源数值补写进回退行：按 id 去重后必须**恰好一条**带值的主源行，否则不改；名称、ID、译名与已有数值均保留。不得凭猜测添加同义条目——错误别名会把其他指标的数值挂到该行上。主源与回退源都不提供实际值的指标（例如 S&P Global PMI 终值）保持为空，重试时如实提示。
+
+**历史记录不以 Actual 是否为空过滤。** 已到时间但 Actual 缺失时，统一标记 `data_unavailable`（未获取公布值），不再凭倒计时或超过 24 小时认定已公布；有数值才启用分析。缓存读取也重算状态，避免旧 `scheduled` 常驻。历史同步包含今天；手动刷新绕过 10 分钟同步间隔并重新验证 HTTP 缓存。同一筛选下刷新保留可见记录，失败时不清空；回退周历不算完整历史同步成功，主源异常会在日历和历史页显式提示。
+
+已到时间但尚无 Actual 的事件，详情页提供「重新获取公布值」按钮：绕过历史同步间隔，仅按该事件所在日期重新请求，保留原 ID、关注与译名，并提示已取得、仍未返回或失败原因（含数据源告警）。
+
+设置页的「日历网络」支持可选 HTTP CONNECT 代理（`host:port`）。仅日历请求使用，留空沿用系统网络，不修改全机代理、不代理 AI 密钥，HTTPS 证书验证保持开启。代理必须由用户提供，APK 不内置代理地址。连接电脑的安卓调试环境可用 `adb reverse tcp:17890 tcp:7890` 转发电脑已有代理，然后设置 `127.0.0.1:17890`；该配置依赖电脑代理和 ADB 连接，重连/重启后可能需要重建转发。恢复直连可点「使用系统网络」。
 
 日历按单日区间请求，日界与展示均采用**设备系统时区**：请求前把本地日转换为对应的 UTC 瞬时区间（例如东八区的 9 月 11 日 → `2026-09-10T16:00:00Z` ~ `2026-09-11T15:59:59Z`），终点用闭合边界，避免混入次日零点事件。首页“今日”、历史同步的 30 天窗口与 120 天清理阀值同样按系统时区。切换日期时会取消上一个请求、清空旧列表并显示加载提示，因此慢响应不会用其他日期的数据覆盖当前选择。
 

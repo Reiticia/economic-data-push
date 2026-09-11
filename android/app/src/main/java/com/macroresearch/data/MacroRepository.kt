@@ -19,6 +19,7 @@ import com.macroresearch.data.remote.DirectMarketClient
 import com.macroresearch.data.remote.EconomicCalendarClient
 import com.macroresearch.data.remote.TranslationClient
 import com.macroresearch.data.remote.stableEventId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,6 +47,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 class MacroRepository(
     private val calendarClient: EconomicCalendarClient,
+    private val calendarNetwork: CalendarNetworkPreferences,
     private val marketClient: DirectMarketClient,
     private val translationClient: TranslationClient,
     private val aiAnalysisClient: AiAnalysisClient,
@@ -61,11 +63,26 @@ class MacroRepository(
     val translationSettings: StateFlow<TranslationSettings> = translationPreferences.settings
     private val _translationError = MutableStateFlow<String?>(null)
     val translationError = _translationError.asStateFlow()
+    val calendarProxy = calendarNetwork.address
+    private val _calendarWarning = MutableStateFlow<String?>(null)
+    val calendarWarning = _calendarWarning.asStateFlow()
+
+    fun saveCalendarProxy(address: String) {
+        calendarNetwork.save(address)
+        historySyncedAt = 0L
+    }
+
+    private suspend fun fetchCalendar(start: LocalDate, end: LocalDate): List<EconomicEvent> {
+        val result = calendarClient.fetch(start, end)
+        _calendarWarning.value = result.warning
+        return result.events
+    }
 
     /** Emits after freshly reviewed translations are persisted so lists can re-read them. */
     private val _translationsUpdated = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val translationsUpdated: SharedFlow<Unit> = _translationsUpdated.asSharedFlow()
 
+    private val releaseRefresher = EventReleaseRefresher(calendarClient, dao)
     private val marketCache = ConcurrentHashMap<Long, CachedMarket>()
     private val historyMutex = Mutex()
     private val translationMutex = Mutex()
@@ -90,12 +107,11 @@ class MacroRepository(
         dao.deleteByProviders(LEGACY_CALENDAR_PROVIDERS)
         // Days follow the device zone so the refresh window matches the times shown on cards.
         val today = LocalDate.now()
-        val events = mergeCachedTranslations(
-            calendarClient.events(today.minusDays(1), today.plusDays(days.toLong())),
+        val source = mergeCachedTranslations(
+            fetchCalendar(today.minusDays(1), today.plusDays(days.toLong())),
         )
-        // Publish source data immediately. Translation is an enhancement and must not
-        // block the calendar from appearing.
-        dao.upsert(events.map(EconomicEvent::asEntity))
+        // Hydrate matching fallback rows in place, retaining their IDs, follows and names.
+        val events = dao.mergeCalendar(source.map(EconomicEvent::asEntity)).map { it.asExternalModel() }
         val selected = selectedCountries.value
         val localToday = LocalDate.now()
         val now = Instant.now()
@@ -125,10 +141,10 @@ class MacroRepository(
         country: String? = null,
         minimumImportance: Int? = null,
     ): List<EconomicEvent> {
-        val events = mergeCachedTranslations(calendarClient.events(date, date))
+        val source = mergeCachedTranslations(fetchCalendar(date, date))
             .filter { country == null || it.country == country }
             .filter { minimumImportance == null || it.importance >= minimumImportance }
-        dao.upsert(events.map(EconomicEvent::asEntity))
+        val events = dao.mergeCalendar(source.map(EconomicEvent::asEntity)).map { it.asExternalModel() }
         // Translation is an enhancement and must never hold back the day's list.
         val priorityEvents = events.filter { country != null || it.country in selectedCountries.value }
         if (priorityEvents.isNotEmpty()) {
@@ -151,6 +167,17 @@ class MacroRepository(
             ),
         )
         return EventDetailResponse(event, observations)
+    }
+
+    /**
+     * User-triggered retry for one event whose release value is still missing. Bypasses the
+     * history sync interval, keeps the cached row and its translated name, and reports the
+     * source warning so the caller can explain why a value is still absent.
+     */
+    suspend fun refreshEventRelease(id: Long): EventDetailResponse {
+        val warning = releaseRefresher.refresh(id).warning
+        _calendarWarning.value = warning
+        return event(id)
     }
 
     suspend fun analysis(id: Long): AnalysisReport {
@@ -243,20 +270,24 @@ class MacroRepository(
         category: String? = null,
         limit: Int = 100,
         offset: Int = 0,
+        forceRefresh: Boolean = false,
     ): List<EconomicEvent> {
         var syncError: Throwable? = null
         var page = dao.history(Instant.now().toString(), country, category, limit, offset)
             .map { it.asExternalModel() }
-        if (offset == 0 && historySyncDue()) {
-            if (page.isEmpty()) {
-                // Cold cache: wait for the fetch so the first page has content, surfacing failures.
-                runCatching { syncRecentHistory() }.onFailure { syncError = it }
-                page = dao.history(Instant.now().toString(), country, category, limit, offset)
-                    .map { it.asExternalModel() }
-            } else {
-                // Cache already renders: revalidate in the background instead of blocking.
-                repositoryScope.launch { runCatching { syncRecentHistory() } }
+        if (offset == 0 && (forceRefresh || historySyncDue())) {
+            // History must be refreshed before it is rendered. Returning rows cached while the
+            // events were still upcoming leaves the list stuck on stale values and statuses.
+            try {
+                syncRecentHistory(forceRefresh)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                syncError = error
+                _calendarWarning.value = "${error.javaClass.simpleName}: ${error.message}"
             }
+            page = dao.history(Instant.now().toString(), country, category, limit, offset)
+                .map { it.asExternalModel() }
         }
         if (page.isEmpty()) syncError?.let { throw it }
         // Translation is an enhancement: return the cached page immediately and let the
@@ -337,17 +368,20 @@ class MacroRepository(
     private fun historySyncDue(): Boolean =
         System.currentTimeMillis() - historySyncedAt >= HISTORY_CACHE_MS
 
-    private suspend fun syncRecentHistory() = historyMutex.withLock {
-        if (System.currentTimeMillis() - historySyncedAt < HISTORY_CACHE_MS) return@withLock
+    private suspend fun syncRecentHistory(force: Boolean = false) = historyMutex.withLock {
+        if (!force && !historySyncDue()) return@withLock
         val today = LocalDate.now()
         // The history screen only ever displays supported countries, and the calendar API
         // accepts a country filter: fetching worldwide rows would download several MB and
         // hit the endpoint's event cap for nothing.
         val countryCodes = EconomicCalendarClient.codesFor(CountryPreferences.SUPPORTED_COUNTRIES)
-        val events = calendarClient.events(today.minusDays(30), today.minusDays(1), countryCodes)
-        val merged = mergeCachedTranslations(events)
-        dao.upsert(merged.map(EconomicEvent::asEntity))
-        historySyncedAt = System.currentTimeMillis()
+        // Include today's elapsed releases too; history queries still exclude future rows.
+        val result = calendarClient.fetch(today.minusDays(30), today, countryCodes)
+        _calendarWarning.value = result.warning
+        val merged = mergeCachedTranslations(result.events)
+        dao.mergeCalendar(merged.map(EconomicEvent::asEntity))
+        // A successful weekly fallback did not fill historical actuals. Allow the next retry.
+        if (result.warning == null) historySyncedAt = System.currentTimeMillis()
     }
 
     private suspend fun enrichTranslations(events: List<EconomicEvent>): List<EconomicEvent> =
@@ -387,15 +421,11 @@ class MacroRepository(
                     .onFailure { error -> firstError = firstError ?: error.message ?: "Translation failed" }
             }
             if (translated.isNotEmpty()) {
-                // Persist every translated name so a failed batch cannot discard
-                // translations completed by other batches.
-                dao.upsert(
-                    merged.mapNotNull { event ->
-                        translated[event.event]?.let { (zhCn, zhTw) ->
-                            event.copy(eventZhCn = zhCn, eventZhTw = zhTw).asEntity()
-                        }
-                    },
-                )
+                // Only update name columns. A slow AI response must never overwrite newly
+                // published actuals/status with the pre-release snapshot it started from.
+                translated.forEach { (name, translation) ->
+                    dao.updateTranslation(name, translation.first, translation.second)
+                }
                 // Lists render before enrichment finishes; this tells them to re-read.
                 _translationsUpdated.tryEmit(Unit)
             }

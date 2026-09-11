@@ -66,6 +66,7 @@ import java.time.format.TextStyle
 fun CalendarScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Long) -> Unit) {
     val vm: CalendarViewModel = viewModel(factory = viewModelFactory { CalendarViewModel(repository) })
     val state by vm.state.collectAsStateWithLifecycle()
+    val warning by repository.calendarWarning.collectAsStateWithLifecycle()
     var showFilters by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     // Translations are keyed by event name and can be corrected on the detail screen;
@@ -109,6 +110,7 @@ fun CalendarScreen(repository: MacroRepository, padding: PaddingValues, onEvent:
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
+            warning?.let { item { Text(stringResource(R.string.calendar_source_warning, it), color = MaterialTheme.colorScheme.error) } }
             state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
             if (state.loading) item { LoadingHint() }
             if (!state.loading && state.filtered.isEmpty()) item {

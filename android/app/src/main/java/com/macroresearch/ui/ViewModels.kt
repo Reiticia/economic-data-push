@@ -163,12 +163,18 @@ class CalendarViewModel(private val repository: MacroRepository) : ViewModel() {
     }
 }
 
+/** Outcome of a manual published-value retry on the event detail screen. */
+enum class ReleaseFetchOutcome { RETRIEVED, STILL_MISSING }
+
 data class EventDetailState(
     val detail: EventDetailResponse? = null,
     val market: MarketResponse? = null,
     val followed: Boolean = false,
     val loading: Boolean = true,
     val error: String? = null,
+    val releaseFetching: Boolean = false,
+    val releaseOutcome: ReleaseFetchOutcome? = null,
+    val releaseError: String? = null,
 )
 
 class EventDetailViewModel(
@@ -177,6 +183,7 @@ class EventDetailViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(EventDetailState())
     val state = _state.asStateFlow()
+    private var releaseRequest: Job? = null
 
     init {
         refresh()
@@ -197,6 +204,27 @@ class EventDetailViewModel(
             _state.value = _state.value.copy(detail = detail, market = market, loading = false)
         }.onFailure {
             _state.value = _state.value.copy(loading = false, error = it.message)
+        }
+    }
+
+    /** Retries the published value for this event only; the market snapshot is left untouched. */
+    fun fetchRelease() {
+        if (releaseRequest?.isActive == true) return
+        _state.value = _state.value.copy(releaseFetching = true, releaseOutcome = null, releaseError = null)
+        releaseRequest = viewModelScope.launch {
+            try {
+                val detail = repository.refreshEventRelease(id)
+                _state.value = _state.value.copy(
+                    detail = detail,
+                    releaseFetching = false,
+                    releaseOutcome = if (detail.event.actual.isNullOrBlank()) ReleaseFetchOutcome.STILL_MISSING
+                    else ReleaseFetchOutcome.RETRIEVED,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _state.value = _state.value.copy(releaseFetching = false, releaseError = error.message)
+            }
         }
     }
 
@@ -294,14 +322,20 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
 
     fun refresh(category: String? = _category.value) {
         request?.cancel()
+        val retained = if (category == _category.value) {
+            _state.value.value.orEmpty().filter { it.country in selectedCountries }
+        } else emptyList()
         _category.value = category
         sourceOffset = 0
         _hasMore.value = selectedCountries.isNotEmpty()
-        _state.value = LoadState(value = emptyList(), loading = false)
-        if (selectedCountries.isNotEmpty()) loadMore()
+        // Keep visible history during a retry and on network failure, not a blank screen.
+        _state.value = LoadState(value = retained, loading = false)
+        if (selectedCountries.isNotEmpty()) loadPage(forceRefresh = true)
     }
 
-    fun loadMore() {
+    fun loadMore() = loadPage()
+
+    private fun loadPage(forceRefresh: Boolean = false) {
         if (_state.value.loading || !_hasMore.value) return
         val existing = _state.value.value.orEmpty()
         val category = _category.value
@@ -313,10 +347,13 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
                     category = category,
                     limit = 100,
                     offset = sourceOffset,
+                    forceRefresh = forceRefresh,
                 )
                 sourceOffset += page.size
                 val visiblePage = page.filter { it.country in selectedCountries }
-                val merged = (existing + visiblePage).distinctBy { it.id }
+                val merged = (if (forceRefresh) visiblePage + existing else existing + visiblePage)
+                    .distinctBy { it.id }
+                    .sortedWith(compareByDescending<EconomicEvent> { it.eventTime }.thenByDescending { it.importance })
                 _hasMore.value = page.size == 100
                 _state.value = LoadState(merged, loading = false)
             } catch (cancelled: CancellationException) {
@@ -336,8 +373,10 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
                 repository.cachedTranslations(current.map(EconomicEvent::event))
             }.getOrNull().orEmpty()
             if (updates.isEmpty()) return@launch
-            val refreshed = current.map { it.withTranslation(updates) }
-            if (refreshed != current) _state.value = _state.value.copy(value = refreshed)
+            // A page refresh may have completed while translations were being read.
+            val latest = _state.value.value.orEmpty()
+            val refreshed = latest.map { it.withTranslation(updates) }
+            if (refreshed != latest) _state.value = _state.value.copy(value = refreshed)
         }
     }
 }

@@ -6,12 +6,18 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.macroresearch.data.TranslationSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -82,10 +88,12 @@ class TranslationClient(
                 pending = pending.filterNot(translated::containsKey)
                 if (pending.isEmpty()) return@withContext translated
                 lastError = IOException("Translation API omitted ${pending.size} event names")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 lastError = error
             }
-            if (attempt + 1 < MAX_ATTEMPTS) Thread.sleep(RETRY_DELAY_MS * (attempt + 1))
+            if (attempt + 1 < MAX_ATTEMPTS) delay(RETRY_DELAY_MS * (attempt + 1))
         }
         if (translated.isNotEmpty()) return@withContext translated
         throw lastError ?: IOException("Translation request failed")
@@ -111,7 +119,11 @@ class TranslationClient(
             if (pending.isEmpty()) return@withContext verified
             val attempt = translate(pending, settings, apiKey, revise = round > 0)
             if (attempt.isEmpty()) return@withContext verified
-            val accepted = runCatching { verify(attempt, settings, apiKey) }.getOrElse {
+            val accepted = try {
+                verify(attempt, settings, apiKey)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
                 // A reviewer that cannot answer (endpoint error or unusable reply) must not
                 // block usable translations forever; only explicit rejections trigger a retry.
                 verified += attempt
@@ -152,19 +164,35 @@ class TranslationClient(
     private fun chatEndpoint(baseUrl: String): String =
         if (baseUrl.endsWith("/chat/completions")) baseUrl else "$baseUrl/chat/completions"
 
-    private fun execute(endpoint: String, apiKey: String, payload: Map<String, Any>): String {
+    private suspend fun execute(endpoint: String, apiKey: String, payload: Map<String, Any>): String {
         val request = Request.Builder()
             .url(endpoint)
             .header("Authorization", "Bearer $apiKey")
             .header("Accept", "application/json")
             .post(gson.toJson(payload).toRequestBody(JSON_MEDIA_TYPE))
             .build()
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                throw IOException("Translation API returned HTTP ${response.code}")
-            }
-            return body
+        return suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, error: IOException) {
+                    if (continuation.isActive) continuation.resumeWith(Result.failure(error))
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    response.use {
+                        try {
+                            val body = response.body?.string().orEmpty()
+                            if (!response.isSuccessful) {
+                                throw IOException("Translation API returned HTTP ${response.code}")
+                            }
+                            continuation.resumeWith(Result.success(body))
+                        } catch (error: Exception) {
+                            if (continuation.isActive) continuation.resumeWith(Result.failure(error))
+                        }
+                    }
+                }
+            })
         }
     }
 
