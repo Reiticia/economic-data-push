@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import com.macroresearch.data.CountryPreferences
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.ui.CalendarViewModel
 import com.macroresearch.ui.common.EventCard
+import com.macroresearch.ui.common.LoadingHint
 import com.macroresearch.ui.common.countryLabel
 import com.macroresearch.ui.common.flag
 import com.macroresearch.ui.common.importanceLabel
@@ -66,6 +68,9 @@ fun CalendarScreen(repository: MacroRepository, padding: PaddingValues, onEvent:
     val state by vm.state.collectAsStateWithLifecycle()
     var showFilters by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    // Translations are keyed by event name and can be corrected on the detail screen;
+    // re-read them whenever this screen is shown again so corrections appear immediately.
+    LaunchedEffect(Unit) { vm.refreshTranslations() }
 
     Column(
         modifier = Modifier
@@ -105,6 +110,7 @@ fun CalendarScreen(repository: MacroRepository, padding: PaddingValues, onEvent:
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
             state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
+            if (state.loading) item { LoadingHint() }
             if (!state.loading && state.filtered.isEmpty()) item {
                 Card { Text(stringResource(R.string.no_filtered_events), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }

@@ -127,3 +127,23 @@ data class MarketQuotesResponse(
     val unavailable: List<String>,
 )
 
+/** One link of the AI-generated transmission chain, e.g. "CPI surprise" → "real yields". */
+data class TransmissionStep(
+    val from: String,
+    val to: String,
+    val direction: String,
+    val rationale: String,
+)
+
+/** AI market analysis for a released event, cached locally and re-runnable. */
+data class AiAnalysis(
+    val eventId: Long,
+    val revision: Int,
+    val chain: List<TransmissionStep>,
+    val dataAnalysis: String,
+    val marketOutlook: String,
+    val risks: String?,
+    val model: String,
+    val generatedAt: String,
+)
+

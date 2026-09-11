@@ -56,6 +56,9 @@ interface EventDao {
     @Query("DELETE FROM cached_event WHERE eventTime < :before")
     suspend fun deleteOlderThan(before: String)
 
+    @Query("DELETE FROM cached_event WHERE provider IN (:providers)")
+    suspend fun deleteByProviders(providers: List<String>)
+
     @Query("SELECT EXISTS(SELECT 1 FROM followed_event WHERE eventId = :eventId)")
     fun observeFollowed(eventId: Long): Flow<Boolean>
 

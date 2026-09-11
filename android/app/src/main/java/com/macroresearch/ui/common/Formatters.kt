@@ -45,7 +45,7 @@ fun EconomicEvent.value(value: String?, locale: Locale = Locale.ENGLISH): String
 
 fun EconomicEvent.surprise(): BigDecimal? {
     val actualValue = actual?.toBigDecimalOrNull() ?: return null
-    val consensusValue = consensus?.toBigDecimalOrNull() ?: return null
+    val consensusValue = (consensus ?: forecast)?.toBigDecimalOrNull() ?: return null
     return actualValue - consensusValue
 }
 

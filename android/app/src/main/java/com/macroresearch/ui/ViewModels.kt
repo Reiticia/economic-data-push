@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.model.AnalysisReport
+import com.macroresearch.data.model.AiAnalysis
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.EventDetailResponse
 import com.macroresearch.data.model.MarketResponse
@@ -107,6 +108,7 @@ class CalendarViewModel(private val repository: MacroRepository) : ViewModel() {
         CalendarState(countries = repository.selectedCountries.value),
     )
     val state = _state.asStateFlow()
+    private var request: Job? = null
 
     init {
         selectDate(LocalDate.now())
@@ -115,20 +117,49 @@ class CalendarViewModel(private val repository: MacroRepository) : ViewModel() {
                 _state.value = _state.value.copy(countries = countries)
             }
         }
+        viewModelScope.launch {
+            repository.translationsUpdated.collect { refreshTranslations() }
+        }
     }
 
     fun selectDate(date: LocalDate) {
-        _state.value = _state.value.copy(date = date, loading = true, error = null)
-        viewModelScope.launch {
-            runCatching { repository.calendar(date) }
-                .onSuccess { _state.value = _state.value.copy(events = it, loading = false) }
-                .onFailure { _state.value = _state.value.copy(loading = false, error = it.message) }
+        // Cancel the previous fetch: a slow earlier response must never overwrite the day the
+        // user just picked, and the list must not keep showing another day's events meanwhile.
+        request?.cancel()
+        _state.value = _state.value.copy(date = date, events = emptyList(), loading = true, error = null)
+        request = viewModelScope.launch {
+            try {
+                val events = repository.calendar(date)
+                if (_state.value.date == date) {
+                    _state.value = _state.value.copy(events = events, loading = false)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (_state.value.date == date) {
+                    _state.value = _state.value.copy(loading = false, error = error.message)
+                }
+            }
         }
     }
 
     fun applyFilters(importance: Set<Int>, countries: Set<String>) {
         _state.value = _state.value.copy(importance = importance, countries = countries)
         repository.setCountries(countries)
+    }
+
+    /** Re-reads name-keyed translations after the user corrects one on the detail screen. */
+    fun refreshTranslations() {
+        val current = _state.value.events
+        if (current.isEmpty()) return
+        viewModelScope.launch {
+            val updates = runCatching {
+                repository.cachedTranslations(current.map(EconomicEvent::event))
+            }.getOrNull().orEmpty()
+            if (updates.isEmpty()) return@launch
+            val refreshed = current.map { it.withTranslation(updates) }
+            if (refreshed != current) _state.value = _state.value.copy(events = refreshed)
+        }
     }
 }
 
@@ -182,14 +213,41 @@ data class AnalysisState(
     val error: String? = null,
 )
 
+/** Cached AI briefing plus its in-flight generation state. */
+data class AiAnalysisState(
+    val analysis: AiAnalysis? = null,
+    val loading: Boolean = false,
+    val error: String? = null,
+)
+
 class AnalysisViewModel(
     private val id: Long,
     private val repository: MacroRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(AnalysisState())
     val state = _state.asStateFlow()
+    private val _ai = MutableStateFlow(AiAnalysisState())
+    val ai = _ai.asStateFlow()
 
-    init { refresh() }
+    init {
+        refresh()
+        viewModelScope.launch {
+            repository.observeAiAnalysis(id).collect { cached ->
+                // A generation in flight owns the state until it finishes.
+                if (!_ai.value.loading) _ai.value = _ai.value.copy(analysis = cached)
+            }
+        }
+    }
+
+    /** Runs or re-runs the AI briefing on the user's own endpoint and stores it locally. */
+    fun generateAiAnalysis(languageTag: String) = viewModelScope.launch {
+        _ai.value = _ai.value.copy(loading = true, error = null)
+        runCatching { repository.generateAiAnalysis(id, languageTag) }
+            .onSuccess { _ai.value = AiAnalysisState(analysis = it) }
+            .onFailure { error ->
+                _ai.value = _ai.value.copy(loading = false, error = error.message)
+            }
+    }
 
     fun refresh() = viewModelScope.launch {
         _state.value = AnalysisState(loading = true)
@@ -229,6 +287,9 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
                 refresh()
             }
         }
+        viewModelScope.launch {
+            repository.translationsUpdated.collect { refreshTranslations() }
+        }
     }
 
     fun refresh(category: String? = _category.value) {
@@ -265,7 +326,29 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
             }
         }
     }
+
+    /** Re-reads name-keyed translations after the user corrects one on the detail screen. */
+    fun refreshTranslations() {
+        val current = _state.value.value.orEmpty()
+        if (current.isEmpty()) return
+        viewModelScope.launch {
+            val updates = runCatching {
+                repository.cachedTranslations(current.map(EconomicEvent::event))
+            }.getOrNull().orEmpty()
+            if (updates.isEmpty()) return@launch
+            val refreshed = current.map { it.withTranslation(updates) }
+            if (refreshed != current) _state.value = _state.value.copy(value = refreshed)
+        }
+    }
 }
+
+/** Applies locally stored translations (keyed by event name) onto an already rendered event. */
+private fun EconomicEvent.withTranslation(
+    updates: Map<String, Pair<String, String>>,
+): EconomicEvent = updates[event]?.let { (zhCn, zhTw) ->
+    if (eventZhCn == zhCn && eventZhTw == zhTw) this
+    else copy(eventZhCn = zhCn, eventZhTw = zhTw)
+} ?: this
 
 @Suppress("UNCHECKED_CAST")
 fun <T : ViewModel> viewModelFactory(create: () -> T): ViewModelProvider.Factory =

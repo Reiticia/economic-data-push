@@ -6,12 +6,13 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [CachedEventEntity::class, FollowedEventEntity::class],
-    version = 3,
+    entities = [CachedEventEntity::class, FollowedEventEntity::class, AiAnalysisEntity::class],
+    version = 4,
     exportSchema = true,
 )
 abstract class MacroDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
+    abstract fun analysisDao(): AnalysisDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -27,6 +28,24 @@ abstract class MacroDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DELETE FROM followed_event")
                 db.execSQL("DELETE FROM cached_event")
+            }
+        }
+
+        // Adds the on-device cache for AI market analyses.
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `ai_analysis` (" +
+                        "`eventId` INTEGER NOT NULL, " +
+                        "`revision` INTEGER NOT NULL, " +
+                        "`chainJson` TEXT NOT NULL, " +
+                        "`dataAnalysis` TEXT NOT NULL, " +
+                        "`marketOutlook` TEXT NOT NULL, " +
+                        "`risks` TEXT, " +
+                        "`model` TEXT NOT NULL, " +
+                        "`generatedAt` TEXT NOT NULL, " +
+                        "PRIMARY KEY(`eventId`))",
+                )
             }
         }
     }

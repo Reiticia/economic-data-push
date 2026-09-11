@@ -351,7 +351,7 @@ class DirectMarketClient(private val client: OkHttpClient) {
         )
 
         private fun snapshotId(eventId: Long, symbol: String, timestamp: String): Long =
-            TradingEconomicsClient.stableId("$eventId|$symbol|$timestamp")
+            stableEventId("$eventId|$symbol|$timestamp")
 
         private fun JsonObject.stringOrNull(name: String): String? =
             get(name)?.takeUnless { it.isJsonNull }?.asString

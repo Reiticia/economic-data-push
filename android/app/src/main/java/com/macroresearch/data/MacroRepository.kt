@@ -1,37 +1,57 @@
 package com.macroresearch.data
 
+import com.macroresearch.data.local.AiAnalysisEntity
+import com.macroresearch.data.local.AnalysisDao
 import com.macroresearch.data.local.EventDao
 import com.macroresearch.data.local.FollowedEventEntity
 import com.macroresearch.data.local.asEntity
 import com.macroresearch.data.local.asExternalModel
+import com.macroresearch.data.model.AiAnalysis
 import com.macroresearch.data.model.AnalysisReport
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.EventDetailResponse
 import com.macroresearch.data.model.EventObservation
 import com.macroresearch.data.model.MarketQuotesResponse
 import com.macroresearch.data.model.MarketResponse
+import com.macroresearch.data.remote.AiAnalysisClient
+import com.macroresearch.data.remote.AiAnalysisInput
 import com.macroresearch.data.remote.DirectMarketClient
-import com.macroresearch.data.remote.TradingEconomicsClient
+import com.macroresearch.data.remote.EconomicCalendarClient
 import com.macroresearch.data.remote.TranslationClient
+import com.macroresearch.data.remote.stableEventId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.util.concurrent.ConcurrentHashMap
 
 class MacroRepository(
-    private val calendarClient: TradingEconomicsClient,
+    private val calendarClient: EconomicCalendarClient,
     private val marketClient: DirectMarketClient,
     private val translationClient: TranslationClient,
+    private val aiAnalysisClient: AiAnalysisClient,
     private val analysisEngine: LocalAnalysisEngine,
     private val dao: EventDao,
+    private val analysisDao: AnalysisDao,
     private val countryPreferences: CountryPreferences,
     private val marketPreferences: MarketPreferences,
     private val translationPreferences: TranslationPreferences,
@@ -42,9 +62,14 @@ class MacroRepository(
     private val _translationError = MutableStateFlow<String?>(null)
     val translationError = _translationError.asStateFlow()
 
+    /** Emits after freshly reviewed translations are persisted so lists can re-read them. */
+    private val _translationsUpdated = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val translationsUpdated: SharedFlow<Unit> = _translationsUpdated.asSharedFlow()
+
     private val marketCache = ConcurrentHashMap<Long, CachedMarket>()
     private val historyMutex = Mutex()
     private val translationMutex = Mutex()
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var historySyncedAt = 0L
 
     fun observeUpcoming(): Flow<List<EconomicEvent>> =
@@ -60,7 +85,11 @@ class MacroRepository(
     suspend fun isFollowed(id: Long): Boolean = dao.isFollowed(id)
 
     suspend fun refreshUpcoming(days: Int = 7) {
-        val today = LocalDate.now(ZoneOffset.UTC)
+        // Drop rows cached by calendar providers that are no longer used so the
+        // upcoming list cannot show the same event twice after an app update.
+        dao.deleteByProviders(LEGACY_CALENDAR_PROVIDERS)
+        // Days follow the device zone so the refresh window matches the times shown on cards.
+        val today = LocalDate.now()
         val events = mergeCachedTranslations(
             calendarClient.events(today.minusDays(1), today.plusDays(days.toLong())),
         )
@@ -85,9 +114,10 @@ class MacroRepository(
             )
             .take(30)
         if (priorityEvents.isNotEmpty()) {
-            dao.upsert(enrichTranslations(priorityEvents).map(EconomicEvent::asEntity))
+            // Home renders from Room, so translations may arrive after the list is shown.
+            repositoryScope.launch { runCatching { enrichTranslations(priorityEvents) } }
         }
-        dao.deleteOlderThan(today.minusDays(120).atStartOfDay().toInstant(ZoneOffset.UTC).toString())
+        dao.deleteOlderThan(today.minusDays(120).atStartOfDay(ZoneId.systemDefault()).toInstant().toString())
     }
 
     suspend fun calendar(
@@ -99,19 +129,19 @@ class MacroRepository(
             .filter { country == null || it.country == country }
             .filter { minimumImportance == null || it.importance >= minimumImportance }
         dao.upsert(events.map(EconomicEvent::asEntity))
-        val selected = selectedCountries.value
-        val priorityEvents = events.filter { country != null || it.country in selected }
-        val localized = enrichTranslations(priorityEvents)
-        val localizedById = localized.associateBy(EconomicEvent::id)
-        if (localized.isNotEmpty()) dao.upsert(localized.map(EconomicEvent::asEntity))
-        return events.map { localizedById[it.id] ?: it }
+        // Translation is an enhancement and must never hold back the day's list.
+        val priorityEvents = events.filter { country != null || it.country in selectedCountries.value }
+        if (priorityEvents.isNotEmpty()) {
+            repositoryScope.launch { runCatching { enrichTranslations(priorityEvents) } }
+        }
+        return events
     }
 
     suspend fun event(id: Long): EventDetailResponse {
         val event = dao.event(id)?.asExternalModel() ?: error("Event is not available in the local cache")
         val observations = if (event.actual == null) emptyList() else listOf(
             EventObservation(
-                id = TradingEconomicsClient.stableId("observation|${event.id}|${event.actual}"),
+                id = stableEventId("observation|${event.id}|${event.actual}"),
                 eventId = event.id,
                 observedAt = Instant.now().toString(),
                 actual = event.actual,
@@ -127,6 +157,73 @@ class MacroRepository(
         val event = event(id).event
         return analysisEngine.analyze(event, market(id).reactions)
     }
+
+    fun observeAiAnalysis(eventId: Long): Flow<AiAnalysis?> =
+        analysisDao.observe(eventId).map { it?.toModel() }
+
+    suspend fun aiAnalysis(eventId: Long): AiAnalysis? = analysisDao.analysis(eventId)?.toModel()
+
+    /**
+     * Builds the AI briefing for a released event and stores it locally. Re-running
+     * replaces the cached row and bumps its revision, so the user can always refresh it.
+     */
+    suspend fun generateAiAnalysis(eventId: Long, languageTag: String): AiAnalysis {
+        val settings = translationPreferences.settings.value
+        val apiKey = translationPreferences.apiKey()
+        require(settings.configured && apiKey != null) {
+            "Configure an API key in Settings first"
+        }
+        val event = dao.event(eventId)?.asExternalModel()
+            ?: error("Event is not available in the local cache")
+        require(event.actual != null) { "The release has no published value yet" }
+        val report = analysisEngine.analyze(event, market(eventId).reactions)
+        val draft = aiAnalysisClient.analyze(
+            AiAnalysisInput(
+                event = event,
+                macroSignal = report.macroSignal,
+                rawSurprise = report.rawSurprise,
+                expectedReactions = report.expectedReactions,
+                observedReactions = report.observedReactions,
+                languageTag = languageTag,
+            ),
+            settings = settings,
+            apiKey = apiKey,
+        )
+        val analysis = AiAnalysis(
+            eventId = eventId,
+            revision = (analysisDao.analysis(eventId)?.revision ?: 0) + 1,
+            chain = draft.chain,
+            dataAnalysis = draft.dataAnalysis,
+            marketOutlook = draft.marketOutlook,
+            risks = draft.risks,
+            model = settings.model,
+            generatedAt = Instant.now().toString(),
+        )
+        analysisDao.upsert(analysis.toEntity())
+        return analysis
+    }
+
+    private fun AiAnalysisEntity.toModel(): AiAnalysis = AiAnalysis(
+        eventId = eventId,
+        revision = revision,
+        chain = aiAnalysisClient.decodeChain(chainJson),
+        dataAnalysis = dataAnalysis,
+        marketOutlook = marketOutlook,
+        risks = risks,
+        model = model,
+        generatedAt = generatedAt,
+    )
+
+    private fun AiAnalysis.toEntity(): AiAnalysisEntity = AiAnalysisEntity(
+        eventId = eventId,
+        revision = revision,
+        chainJson = aiAnalysisClient.encodeChain(chain),
+        dataAnalysis = dataAnalysis,
+        marketOutlook = marketOutlook,
+        risks = risks,
+        model = model,
+        generatedAt = generatedAt,
+    )
 
     suspend fun market(id: Long): MarketResponse {
         val cached = marketCache[id]
@@ -148,18 +245,27 @@ class MacroRepository(
         offset: Int = 0,
     ): List<EconomicEvent> {
         var syncError: Throwable? = null
-        if (offset == 0) {
-            runCatching { syncRecentHistory() }.onFailure { syncError = it }
-        }
-        val page = dao.history(Instant.now().toString(), country, category, limit, offset)
+        var page = dao.history(Instant.now().toString(), country, category, limit, offset)
             .map { it.asExternalModel() }
+        if (offset == 0 && historySyncDue()) {
+            if (page.isEmpty()) {
+                // Cold cache: wait for the fetch so the first page has content, surfacing failures.
+                runCatching { syncRecentHistory() }.onFailure { syncError = it }
+                page = dao.history(Instant.now().toString(), country, category, limit, offset)
+                    .map { it.asExternalModel() }
+            } else {
+                // Cache already renders: revalidate in the background instead of blocking.
+                repositoryScope.launch { runCatching { syncRecentHistory() } }
+            }
+        }
         if (page.isEmpty()) syncError?.let { throw it }
-        val selected = selectedCountries.value
-        val priorityPage = page.filter { country != null || it.country in selected }
-        val localized = enrichTranslations(priorityPage)
-        val localizedById = localized.associateBy(EconomicEvent::id)
-        if (localized.isNotEmpty()) dao.upsert(localized.map(EconomicEvent::asEntity))
-        return page.map { localizedById[it.id] ?: it }
+        // Translation is an enhancement: return the cached page immediately and let the
+        // reviewed translations stream in through [translationsUpdated] instead.
+        val priorityPage = page.filter { country != null || it.country in selectedCountries.value }
+        if (priorityPage.isNotEmpty()) {
+            repositoryScope.launch { runCatching { enrichTranslations(priorityPage) } }
+        }
+        return page
     }
 
     suspend fun correctTranslation(event: EconomicEvent, zhCn: String, zhTw: String) {
@@ -178,7 +284,12 @@ class MacroRepository(
             require(settings.configured && apiKey != null) {
                 "Configure an API key in Settings first"
             }
-            val translated = translationClient.translate(listOf(event.event), settings, apiKey)
+            val translated = translationClient.translateVerified(
+                listOf(event.event),
+                settings,
+                apiKey,
+                retryRejected = true,
+            )
             val result = translated[event.event]
                 ?: error("AI did not return a translation for this event")
             dao.updateTranslation(event.event, result.first, result.second)
@@ -223,10 +334,17 @@ class MacroRepository(
     fun setMarketEnabled(market: String, enabled: Boolean) =
         marketPreferences.setMarketEnabled(market, enabled)
 
+    private fun historySyncDue(): Boolean =
+        System.currentTimeMillis() - historySyncedAt >= HISTORY_CACHE_MS
+
     private suspend fun syncRecentHistory() = historyMutex.withLock {
         if (System.currentTimeMillis() - historySyncedAt < HISTORY_CACHE_MS) return@withLock
-        val today = LocalDate.now(ZoneOffset.UTC)
-        val events = calendarClient.events(today.minusDays(30), today.minusDays(1))
+        val today = LocalDate.now()
+        // The history screen only ever displays supported countries, and the calendar API
+        // accepts a country filter: fetching worldwide rows would download several MB and
+        // hit the endpoint's event cap for nothing.
+        val countryCodes = EconomicCalendarClient.codesFor(CountryPreferences.SUPPORTED_COUNTRIES)
+        val events = calendarClient.events(today.minusDays(30), today.minusDays(1), countryCodes)
         val merged = mergeCachedTranslations(events)
         dao.upsert(merged.map(EconomicEvent::asEntity))
         historySyncedAt = System.currentTimeMillis()
@@ -246,26 +364,42 @@ class MacroRepository(
                 .distinct()
             if (missingNames.isEmpty()) return@withLock merged
 
-            val translated = mutableMapOf<String, Pair<String, String>>()
-            runCatching {
-                missingNames.chunked(5).forEach { batch ->
-                    val batchResult = translationClient.translate(batch, settings, apiKey)
-                    translated += batchResult
-                    // Persist every successful batch before starting the next one. A slow
-                    // or failed later batch can no longer discard completed translations.
-                    dao.upsert(
-                        merged.mapNotNull { event ->
-                            batchResult[event.event]?.let { (zhCn, zhTw) ->
-                                event.copy(eventZhCn = zhCn, eventZhTw = zhTw).asEntity()
+            // Batches run with bounded concurrency and fail independently: a single
+            // slow or rejected batch no longer stalls the whole page load. Each batch is
+            // AI-reviewed and only confirmed translations are returned, so the persistence
+            // step below only ever stores reviewed text.
+            val semaphore = Semaphore(TRANSLATION_MAX_CONCURRENT_BATCHES)
+            val results = withContext(Dispatchers.IO) {
+                coroutineScope {
+                    missingNames.chunked(TRANSLATION_BATCH_SIZE).map { batch ->
+                        async {
+                            semaphore.withPermit {
+                                runCatching { translationClient.translateVerified(batch, settings, apiKey) }
                             }
-                        },
-                    )
+                        }
+                    }.awaitAll()
                 }
-            }.onSuccess {
-                _translationError.value = null
-            }.onFailure { error ->
-                _translationError.value = error.message ?: "Translation failed"
             }
+            val translated = mutableMapOf<String, Pair<String, String>>()
+            var firstError: String? = null
+            results.forEach { result ->
+                result.onSuccess { batchResult -> translated += batchResult }
+                    .onFailure { error -> firstError = firstError ?: error.message ?: "Translation failed" }
+            }
+            if (translated.isNotEmpty()) {
+                // Persist every translated name so a failed batch cannot discard
+                // translations completed by other batches.
+                dao.upsert(
+                    merged.mapNotNull { event ->
+                        translated[event.event]?.let { (zhCn, zhTw) ->
+                            event.copy(eventZhCn = zhCn, eventZhTw = zhTw).asEntity()
+                        }
+                    },
+                )
+                // Lists render before enrichment finishes; this tells them to re-read.
+                _translationsUpdated.tryEmit(Unit)
+            }
+            _translationError.value = firstError
             merged.map { event ->
                 translated[event.event]?.let { (zhCn, zhTw) ->
                     event.copy(eventZhCn = zhCn, eventZhTw = zhTw)
@@ -273,12 +407,19 @@ class MacroRepository(
             }
         }
 
-    private suspend fun mergeCachedTranslations(events: List<EconomicEvent>): List<EconomicEvent> {
-        val names = events.map(EconomicEvent::event).distinct()
-        if (names.isEmpty()) return events
-        val cached = names.chunked(500)
+    /** Name-keyed translations already stored locally; also used to refresh rendered lists. */
+    suspend fun cachedTranslations(names: Collection<String>): Map<String, Pair<String, String>> {
+        val distinct = names.map(String::trim).filter(String::isNotEmpty).distinct()
+        if (distinct.isEmpty()) return emptyMap()
+        return distinct.chunked(500)
             .flatMap { dao.translations(it) }
             .associate { it.event to (it.eventZhCn to it.eventZhTw) }
+    }
+
+    private suspend fun mergeCachedTranslations(events: List<EconomicEvent>): List<EconomicEvent> {
+        if (events.isEmpty()) return events
+        val cached = cachedTranslations(events.map(EconomicEvent::event))
+        if (cached.isEmpty()) return events
         return events.map { event ->
             val translation = cached[event.event]
             if (translation == null) event else event.copy(
@@ -293,5 +434,10 @@ class MacroRepository(
     companion object {
         private const val MARKET_CACHE_MS = 30_000L
         private const val HISTORY_CACHE_MS = 10 * 60_000L
+        private const val TRANSLATION_BATCH_SIZE = 5
+        private const val TRANSLATION_MAX_CONCURRENT_BATCHES = 4
+
+        /** Providers replaced by EconomicCalendarClient; their cached rows are dropped on refresh. */
+        private val LEGACY_CALENDAR_PROVIDERS = listOf("trading_economics")
     }
 }

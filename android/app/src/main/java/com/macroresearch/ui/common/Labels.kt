@@ -14,6 +14,8 @@ import java.util.Locale
 @Composable fun macroSignalLabel(value: String): String = displayLabel(macroSignalResource(value), value)
 @Composable fun statusLabel(value: String): String = displayLabel(statusLabelResource(value), value)
 @Composable fun importanceLabel(value: Int): String = stringResource(importanceLabelResource(value))
+@Composable fun expectedRationaleLabel(value: String): String = displayLabel(expectedRationaleResource(value), value)
+@Composable fun analysisSummaryLabel(value: String): String = displayLabel(analysisSummaryResource(value), value)
 
 @Composable
 private fun displayLabel(@StringRes resource: Int?, fallback: String): String =
@@ -113,5 +115,21 @@ internal fun statusLabelResource(status: String): Int? = when (status) {
     "completed" -> R.string.status_completed
     "timeout" -> R.string.status_timeout
     "historical" -> R.string.status_historical
+    else -> null
+}
+
+// The rule engine emits keys, never prose, so the same release reads identically in every
+// language without spending an AI call on fixed text. Unknown values fall back verbatim.
+@StringRes
+internal fun expectedRationaleResource(value: String): Int? = when (value.trim().lowercase(Locale.ROOT)) {
+    "tighter_policy_baseline" -> R.string.rationale_tighter_baseline
+    "easier_policy_baseline" -> R.string.rationale_easier_baseline
+    "no_directional_signal" -> R.string.rationale_no_directional_signal
+    else -> null
+}
+
+@StringRes
+internal fun analysisSummaryResource(value: String): Int? = when (value.trim()) {
+    "rule_engine_summary" -> R.string.analysis_rule_summary
     else -> null
 }

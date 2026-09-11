@@ -22,6 +22,9 @@ fun EconomicEvent.localizedValue(value: String?): String = value(value, appLocal
 fun EconomicEvent.localizedDate(): String = localDate(appLocale(), stringResource(R.string.date_pattern))
 
 @Composable
+fun EconomicEvent.localizedShortDate(): String = localDate(appLocale(), stringResource(R.string.short_date_pattern))
+
+@Composable
 fun localizedCountdown(eventTime: String, now: Instant = Instant.now()): String =
     countdown(eventTime, now, stringResource(R.string.status_released))
 

@@ -12,11 +12,12 @@ economic-data-push/
 
 Android 客户端直接获取并处理公开数据：
 
-- 财经日历：Trading Economics 公开日历页面
+- 财经日历：TradingView 经济日历 JSON 接口，失败时回退 Forex Factory 公开 JSON
 - 股票指数与美债：Yahoo Finance
 - 加密资产：Binance
 - 外汇与贵金属：BiQuote，失败时回退 Yahoo Finance
 - 事件分析：设备端规则引擎
+- AI 市场分析：用户配置的 OpenAI 兼容接口，事件公布后生成传导链路与走势分析，本地缓存且可重新生成
 - 缓存：Room 本地数据库
 - 事件名称翻译：用户自行配置的 OpenAI 兼容 API
 

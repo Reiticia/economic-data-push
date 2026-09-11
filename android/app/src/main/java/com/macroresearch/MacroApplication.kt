@@ -11,8 +11,9 @@ import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.MarketPreferences
 import com.macroresearch.data.TranslationPreferences
 import com.macroresearch.data.local.MacroDatabase
+import com.macroresearch.data.remote.AiAnalysisClient
 import com.macroresearch.data.remote.DirectMarketClient
-import com.macroresearch.data.remote.TradingEconomicsClient
+import com.macroresearch.data.remote.EconomicCalendarClient
 import com.macroresearch.data.remote.TranslationClient
 import okhttp3.Cache
 import okhttp3.ConnectionPool
@@ -59,14 +60,16 @@ class MacroApplication : Application() {
             .connectionPool(ConnectionPool(0, 1, TimeUnit.NANOSECONDS))
             .build()
         val database = Room.databaseBuilder(this, MacroDatabase::class.java, "macro.db")
-            .addMigrations(MacroDatabase.MIGRATION_1_2, MacroDatabase.MIGRATION_2_3)
+            .addMigrations(MacroDatabase.MIGRATION_1_2, MacroDatabase.MIGRATION_2_3, MacroDatabase.MIGRATION_3_4)
             .build()
         repository = MacroRepository(
-            calendarClient = TradingEconomicsClient(http),
+            calendarClient = EconomicCalendarClient(http),
             marketClient = DirectMarketClient(http),
             translationClient = TranslationClient(translationHttp, gson),
+            aiAnalysisClient = AiAnalysisClient(translationHttp, gson),
             analysisEngine = LocalAnalysisEngine(),
             dao = database.eventDao(),
+            analysisDao = database.analysisDao(),
             countryPreferences = CountryPreferences(this),
             marketPreferences = MarketPreferences(this),
             translationPreferences = translationPreferences,

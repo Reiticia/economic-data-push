@@ -5,14 +5,16 @@ import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.ExpectedReaction
 import com.macroresearch.data.model.MarketReaction
 import com.macroresearch.data.model.ReactionComparison
-import com.macroresearch.data.remote.TradingEconomicsClient
+import com.macroresearch.data.remote.stableEventId
 import java.math.BigDecimal
 import java.time.Instant
 
 class LocalAnalysisEngine {
     fun analyze(event: EconomicEvent, observed: List<MarketReaction>): AnalysisReport {
         val actual = event.actual?.toBigDecimalOrNull()
-        val consensus = event.consensus?.toBigDecimalOrNull()
+        // Some sources publish only one market expectation ("forecast"); fall back to it so
+        // a missing consensus column cannot collapse every signal into "neutral".
+        val consensus = (event.consensus ?: event.forecast)?.toBigDecimalOrNull()
         val surprise = if (actual != null && consensus != null) actual - consensus else null
         val polarity = indicatorPolarity(event)
         val macroDirection = when {
@@ -47,14 +49,14 @@ class LocalAnalysisEngine {
         }
         val now = Instant.now().toString()
         return AnalysisReport(
-            id = TradingEconomicsClient.stableId("analysis|${event.id}"),
+            id = stableEventId("analysis|${event.id}"),
             eventId = event.id,
             rawSurprise = surprise?.stripTrailingZeros()?.toPlainString(),
             macroSignal = signal,
             expectedReactions = expected,
             observedReactions = observed,
             comparisons = comparisons,
-            summary = "Calculated on this device from the published actual and consensus values. Market returns use public one-minute candles when available and are descriptive, not investment advice.",
+            summary = "rule_engine_summary",
             createdAt = now,
             updatedAt = now,
         )
@@ -82,9 +84,9 @@ class LocalAnalysisEngine {
             else -> "flat"
         }
         val rationale = when {
-            direction > 0 -> "A tighter policy path is the rule-based baseline."
-            direction < 0 -> "An easier policy path is the rule-based baseline."
-            else -> "The release does not produce a directional rule signal."
+            direction > 0 -> "tighter_policy_baseline"
+            direction < 0 -> "easier_policy_baseline"
+            else -> "no_directional_signal"
         }
         return listOf(
             ExpectedReaction("dxy", defensiveDirection, rationale),

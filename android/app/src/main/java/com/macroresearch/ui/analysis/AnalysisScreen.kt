@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,11 +44,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.model.AnalysisReport
+import com.macroresearch.data.model.AiAnalysis
+import com.macroresearch.data.model.TransmissionStep
+import com.macroresearch.ui.AiAnalysisState
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.MarketResponse
 import com.macroresearch.data.model.MarketSnapshot
 import com.macroresearch.ui.AnalysisViewModel
 import com.macroresearch.ui.common.assetLabel
+import com.macroresearch.ui.common.analysisSummaryLabel
+import com.macroresearch.ui.common.expectedRationaleLabel
+import com.macroresearch.ui.common.LoadingHint
+import com.macroresearch.ui.common.appLocale
 import com.macroresearch.ui.common.macroSignalLabel
 import com.macroresearch.ui.common.localizedName
 import com.macroresearch.ui.common.statusLabel
@@ -60,6 +68,9 @@ import com.macroresearch.ui.theme.Hawkish
 import com.macroresearch.ui.viewModelFactory
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +78,9 @@ import kotlin.math.abs
 fun AnalysisScreen(id: Long, repository: MacroRepository, onBack: () -> Unit) {
     val vm: AnalysisViewModel = viewModel(key = "analysis-$id", factory = viewModelFactory { AnalysisViewModel(id, repository) })
     val state by vm.state.collectAsStateWithLifecycle()
+    val ai by vm.ai.collectAsStateWithLifecycle()
+    val settings by repository.translationSettings.collectAsStateWithLifecycle()
+    val languageTag = LocalConfiguration.current.locales[0].toLanguageTag()
     Scaffold(
         topBar = { TopAppBar(title = { Text(state.event?.localizedName(LocalConfiguration.current.locales[0]) ?: stringResource(R.string.analysis), fontWeight = FontWeight.Bold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) } }) },
     ) { padding ->
@@ -74,7 +88,15 @@ fun AnalysisScreen(id: Long, repository: MacroRepository, onBack: () -> Unit) {
             state.loading -> Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
             state.event == null -> Column(Modifier.fillMaxSize().padding(padding).padding(24.dp)) { Text(stringResource(R.string.event_load_failed)); Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error) }
             state.report == null -> AnalysisPending(state.event!!, Modifier.padding(padding), state.error, vm::refresh)
-            else -> AnalysisContent(state.event!!, state.report!!, state.market, Modifier.padding(padding))
+            else -> AnalysisContent(
+                event = state.event!!,
+                report = state.report!!,
+                market = state.market,
+                ai = ai,
+                aiConfigured = settings.configured,
+                onGenerateAi = { vm.generateAiAnalysis(languageTag) },
+                modifier = Modifier.padding(padding),
+            )
         }
     }
 }
@@ -93,7 +115,15 @@ private fun AnalysisPending(event: EconomicEvent, modifier: Modifier, error: Str
 }
 
 @Composable
-private fun AnalysisContent(event: EconomicEvent, report: AnalysisReport, market: MarketResponse?, modifier: Modifier) {
+private fun AnalysisContent(
+    event: EconomicEvent,
+    report: AnalysisReport,
+    market: MarketResponse?,
+    ai: AiAnalysisState,
+    aiConfigured: Boolean,
+    onGenerateAi: () -> Unit,
+    modifier: Modifier,
+) {
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { ResultCard(event, report) }
         item { SignalCard(report) }
@@ -104,9 +134,111 @@ private fun AnalysisContent(event: EconomicEvent, report: AnalysisReport, market
         } else {
             item { ReactionTimeline(event, market) }
         }
+        item { AiAnalysisCard(event, ai, aiConfigured, onGenerateAi) }
         item {
-            Text(report.summary, Modifier.padding(bottom = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text(analysisSummaryLabel(report.summary), Modifier.padding(bottom = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+@Composable
+private fun AiAnalysisCard(
+    event: EconomicEvent,
+    ai: AiAnalysisState,
+    configured: Boolean,
+    onGenerate: () -> Unit,
+) {
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.ai_analysis), fontWeight = FontWeight.Bold)
+                if (ai.analysis != null && !ai.loading) {
+                    TextButton(onClick = onGenerate) { Text(stringResource(R.string.ai_reanalyze)) }
+                }
+            }
+            when {
+                event.actual == null -> AiHint(stringResource(R.string.ai_needs_release))
+                !configured -> AiHint(stringResource(R.string.ai_requires_key))
+                ai.loading -> LoadingHint()
+                ai.analysis == null -> {
+                    AiHint(stringResource(R.string.ai_analysis_hint))
+                    Button(onClick = onGenerate, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.ai_analyze))
+                    }
+                }
+                else -> {
+                    val analysis = ai.analysis
+                    if (analysis.chain.isNotEmpty()) {
+                        Text(stringResource(R.string.ai_chain), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
+                        analysis.chain.forEach { step -> ChainStepRow(step) }
+                    }
+                    AiSection(stringResource(R.string.ai_data_analysis), analysis.dataAnalysis)
+                    AiSection(stringResource(R.string.ai_market_outlook), analysis.marketOutlook)
+                    analysis.risks?.takeIf(String::isNotBlank)?.let { AiSection(stringResource(R.string.ai_risks), it) }
+                    Text(
+                        stringResource(R.string.ai_generated_at, generatedAtLabel(analysis.generatedAt), analysis.model, analysis.revision),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            ai.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (ai.error != null && ai.analysis != null) {
+                TextButton(onClick = onGenerate) { Text(stringResource(R.string.retry)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiHint(text: String) = Text(
+    text,
+    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    style = MaterialTheme.typography.bodySmall,
+)
+
+@Composable
+private fun AiSection(title: String, body: String) {
+    if (body.isBlank()) return
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
+        Text(body, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun ChainStepRow(step: TransmissionStep) {
+    val arrow = when (step.direction) {
+        "up" -> "↑"
+        "down" -> "↓"
+        else -> "→"
+    }
+    val color = when (step.direction) {
+        "up" -> AssetUp
+        "down" -> AssetDown
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            Text("${step.from} $arrow ${step.to}", fontWeight = FontWeight.Medium, color = color, style = MaterialTheme.typography.bodyMedium)
+            if (step.rationale.isNotBlank()) {
+                Text(step.rationale, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun generatedAtLabel(iso: String): String {
+    val locale = appLocale()
+    return remember(iso, locale) {
+        runCatching {
+            Instant.parse(iso).atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).withLocale(locale))
+        }.getOrDefault(iso)
     }
 }
 
@@ -158,7 +290,7 @@ private fun ExpectedCard(report: AnalysisReport) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(assetLabel(reaction.symbol), Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium)
                     Text(if (reaction.direction == "up") "↑" else if (reaction.direction == "down") "↓" else "→", color = if (reaction.direction == "up") AssetUp else if (reaction.direction == "down") AssetDown else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(24.dp), fontWeight = FontWeight.Bold)
-                    Text(reaction.rationale, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Text(expectedRationaleLabel(reaction.rationale), Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

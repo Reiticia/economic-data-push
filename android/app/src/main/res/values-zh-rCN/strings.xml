@@ -30,6 +30,7 @@
     <string name="previous_week">上一周</string>
     <string name="next_week">下一周</string>
     <string name="load_failed">加载失败：%1$s</string>
+    <string name="loading_data">正在加载…</string>
     <string name="no_filtered_events">当前筛选下没有事件</string>
     <string name="importance">重要性</string>
     <string name="countries_regions">国家 / 地区</string>
@@ -193,6 +194,7 @@
     <string name="category_reserves">外汇储备</string>
     <string name="basis_points">基点</string>
     <string name="date_pattern">M月d日 · EEEE</string>
+    <string name="short_date_pattern">M月d日</string>
     <string name="month_pattern">yyyy年M月</string>
     <string name="notification_channel">财经数据公布</string>
     <string name="notification_channel_description">实际数据公布及分析完成提醒</string>
@@ -218,4 +220,19 @@
     <string name="coverage_missing_samples">部分观察时点缺少有效样本，可能因休市或时间精度不足；未对缺失价格进行插值。</string>
     <string name="history_load_more">加载更早的事件</string>
     <string name="history_refresh">刷新历史数据</string>
+    <string name="ai_analysis">AI 市场分析</string>
+    <string name="ai_analyze">生成分析</string>
+    <string name="ai_reanalyze">重新分析</string>
+    <string name="ai_analysis_hint">调用你配置的 AI 接口，说明该数据如何经由利率、美元与风险资产传导。</string>
+    <string name="ai_requires_key">请先在设置中填写 API Key 才能生成 AI 分析。</string>
+    <string name="ai_needs_release">该事件尚未公布数据。</string>
+    <string name="ai_chain">传导链路</string>
+    <string name="ai_data_analysis">数据分析</string>
+    <string name="ai_market_outlook">市场走势</string>
+    <string name="ai_risks">风险</string>
+    <string name="ai_generated_at">生成于 %1$s · %2$s · 第 %3$d 次</string>
+    <string name="analysis_rule_summary">由本机根据已公布的 Actual 与 Consensus 计算得出。行情变动在可用时采用公开的一分钟 K 线，仅作描述，不构成投资建议。</string>
+    <string name="rationale_tighter_baseline">政策路径趋紧是规则引擎的基准假设。</string>
+    <string name="rationale_easier_baseline">政策路径趋松是规则引擎的基准假设。</string>
+    <string name="rationale_no_directional_signal">该数据未产生有方向的规则信号。</string>
 </resources>

@@ -23,8 +23,18 @@ class FormattersTest {
     }
 
     @Test
-    fun missingConsensusHasNoSurprise() {
-        assertNull(event(actual = "3.2", consensus = null, unit = "%").surprise())
+    fun missingExpectationHasNoSurprise() {
+        // Neither consensus nor forecast means there is nothing to compare the actual against.
+        assertNull(event(actual = "3.2", consensus = null, unit = "%").copy(forecast = null).surprise())
+        assertNull(event(actual = null, consensus = "2.9", unit = "%").surprise())
+    }
+
+    @Test
+    fun forecastFeedsSurpriseWhenNoSeparateConsensusIsPublished() {
+        // Calendar sources expose a single market expectation; it must still yield a surprise,
+        // otherwise every release collapses into a neutral signal.
+        val surprise = event(actual = "3.2", consensus = null, unit = "%").surprise()
+        assertEquals("0.2", surprise?.stripTrailingZeros()?.toPlainString())
     }
 
     @Test

@@ -40,6 +40,10 @@ class LabelsTest {
         assertEquals(R.string.importance_medium, importanceLabelResource(2))
         assertEquals(R.string.importance_low, importanceLabelResource(1))
         assertEquals(R.string.importance_unrated, importanceLabelResource(0))
+        assertEquals(R.string.rationale_tighter_baseline, expectedRationaleResource("tighter_policy_baseline"))
+        assertEquals(R.string.rationale_easier_baseline, expectedRationaleResource("easier_policy_baseline"))
+        assertEquals(R.string.rationale_no_directional_signal, expectedRationaleResource("no_directional_signal"))
+        assertEquals(R.string.analysis_rule_summary, analysisSummaryResource("rule_engine_summary"))
     }
 
     @Test
@@ -49,6 +53,9 @@ class LabelsTest {
         assertNull(macroSignalResource("custom_signal"))
         assertNull(statusLabelResource("custom_status"))
         assertNull(categoryLabelResource("provider category"))
+        // Legacy prose (or any unexpected value) is shown verbatim instead of being dropped.
+        assertNull(expectedRationaleResource("A tighter policy path is the rule-based baseline."))
+        assertNull(analysisSummaryResource("free text summary"))
     }
 
     @Test

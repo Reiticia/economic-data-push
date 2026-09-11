@@ -32,6 +32,19 @@ data class FollowedEventEntity(
     val followedAt: Long = System.currentTimeMillis(),
 )
 
+/** Cached AI analysis; [chainJson] holds the serialized transmission chain. */
+@Entity(tableName = "ai_analysis")
+data class AiAnalysisEntity(
+    @PrimaryKey val eventId: Long,
+    val revision: Int,
+    val chainJson: String,
+    val dataAnalysis: String,
+    val marketOutlook: String,
+    val risks: String?,
+    val model: String,
+    val generatedAt: String,
+)
+
 fun EconomicEvent.asEntity() = CachedEventEntity(
     id, provider, providerId, releaseGroupId, country, currency, category, event, eventZhCn, eventZhTw,
     eventTime, importance, actual, previous, consensus, forecast, unit, status,

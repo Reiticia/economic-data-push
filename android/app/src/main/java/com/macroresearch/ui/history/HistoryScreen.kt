@@ -13,12 +13,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +29,7 @@ import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.ui.HistoryViewModel
 import com.macroresearch.ui.common.EventCard
+import com.macroresearch.ui.common.LoadingHint
 import com.macroresearch.ui.common.surprise
 import com.macroresearch.ui.theme.AssetDown
 import com.macroresearch.ui.theme.AssetUp
@@ -41,6 +42,9 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
     val selected by vm.category.collectAsStateWithLifecycle()
     val hasMore by vm.hasMore.collectAsStateWithLifecycle()
     val events = state.value.orEmpty()
+    // Translations are keyed by event name and can be corrected on the detail screen;
+    // re-read them whenever this screen is shown again so corrections appear immediately.
+    LaunchedEffect(Unit) { vm.refreshTranslations() }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -75,8 +79,8 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
             state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
-            items(events, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
-            if (state.loading) item { CircularProgressIndicator() }
+            items(events, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }, showDate = true) }
+            if (state.loading) item { LoadingHint() }
             if (hasMore && !state.loading) item {
                 Button(onClick = vm::loadMore, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(if (state.error == null) R.string.history_load_more else R.string.retry))

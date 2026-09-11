@@ -25,7 +25,12 @@ import com.macroresearch.ui.theme.Dovish
 import com.macroresearch.ui.theme.Upcoming
 
 @Composable
-fun EventCard(event: EconomicEvent, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun EventCard(
+    event: EconomicEvent,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    showDate: Boolean = false,
+) {
     val surprise = event.surprise()
     Card(
         onClick = onClick,
@@ -42,7 +47,9 @@ fun EventCard(event: EconomicEvent, onClick: () -> Unit, modifier: Modifier = Mo
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("${event.localTime()}  ${flag(event.country)}  ${countryLabel(event.country)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Lists that span several days (history) need the date; day views already show it in the header.
+                val timestamp = if (showDate) "${event.localizedShortDate()}  ${event.localTime()}" else event.localTime()
+                Text("$timestamp  ${flag(event.country)}  ${countryLabel(event.country)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(statusLabel(event.status), color = statusColor(event.status), style = MaterialTheme.typography.labelMedium)
             }
             Text(event.localizedName(LocalConfiguration.current.locales[0]), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)

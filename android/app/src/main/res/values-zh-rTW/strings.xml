@@ -30,6 +30,7 @@
     <string name="previous_week">上一週</string>
     <string name="next_week">下一週</string>
     <string name="load_failed">載入失敗：%1$s</string>
+    <string name="loading_data">正在載入…</string>
     <string name="no_filtered_events">目前篩選條件下沒有事件</string>
     <string name="importance">重要性</string>
     <string name="countries_regions">國家 / 地區</string>
@@ -193,6 +194,7 @@
     <string name="category_reserves">外匯存底</string>
     <string name="basis_points">基點</string>
     <string name="date_pattern">M月d日 · EEEE</string>
+    <string name="short_date_pattern">M月d日</string>
     <string name="month_pattern">yyyy年M月</string>
     <string name="notification_channel">財經資料公布</string>
     <string name="notification_channel_description">實際資料公布及分析完成提醒</string>
@@ -218,4 +220,19 @@
     <string name="coverage_missing_samples">部分觀察時點缺少有效樣本，可能因休市或時間精度不足；未對缺失價格進行插值。</string>
     <string name="history_load_more">載入更早的事件</string>
     <string name="history_refresh">重新整理歷史資料</string>
+    <string name="ai_analysis">AI 市場分析</string>
+    <string name="ai_analyze">生成分析</string>
+    <string name="ai_reanalyze">重新分析</string>
+    <string name="ai_analysis_hint">呼叫你設定的 AI 介面，說明該數據如何經由利率、美元與風險資產傳導。</string>
+    <string name="ai_requires_key">請先在設定中填寫 API Key 才能生成 AI 分析。</string>
+    <string name="ai_needs_release">該事件尚未公布數據。</string>
+    <string name="ai_chain">傳導鏈路</string>
+    <string name="ai_data_analysis">數據分析</string>
+    <string name="ai_market_outlook">市場走勢</string>
+    <string name="ai_risks">風險</string>
+    <string name="ai_generated_at">生成於 %1$s · %2$s · 第 %3$d 次</string>
+    <string name="analysis_rule_summary">由本機根據已公布的 Actual 與 Consensus 計算得出。行情變動在可用時採用公開的一分鐘 K 線，僅作描述，不構成投資建議。</string>
+    <string name="rationale_tighter_baseline">政策路徑趨緊是規則引擎的基準假設。</string>
+    <string name="rationale_easier_baseline">政策路徑趨鬆是規則引擎的基準假設。</string>
+    <string name="rationale_no_directional_signal">該數據未產生有方向的規則信號。</string>
 </resources>

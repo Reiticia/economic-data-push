@@ -13,12 +13,16 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 class TranslationClient(
     private val client: OkHttpClient,
     private val gson: Gson,
 ) {
+    /** Names whose translation kept failing review; skipped until the provider changes. */
+    private val rejected = ConcurrentHashMap.newKeySet<String>()
+    private var rejectedProvider: String? = null
     suspend fun models(baseUrl: String, apiKey: String): List<String> =
         withContext(Dispatchers.IO) {
             val endpoint = when {
@@ -59,13 +63,10 @@ class TranslationClient(
         eventNames: List<String>,
         settings: TranslationSettings,
         apiKey: String,
+        revise: Boolean = false,
     ): Map<String, Pair<String, String>> = withContext(Dispatchers.IO) {
         if (eventNames.isEmpty()) return@withContext emptyMap()
-        val endpoint = if (settings.baseUrl.endsWith("/chat/completions")) {
-            settings.baseUrl
-        } else {
-            "${settings.baseUrl}/chat/completions"
-        }
+        val endpoint = chatEndpoint(settings.baseUrl)
 
         val translated = linkedMapOf<String, Pair<String, String>>()
         var pending = eventNames
@@ -75,7 +76,7 @@ class TranslationClient(
                 val responseText = execute(
                     endpoint = endpoint,
                     apiKey = apiKey,
-                    payload = payload(pending, settings.model, useResponseFormat = attempt == 0),
+                    payload = payload(pending, settings.model, useResponseFormat = attempt == 0, revise = revise),
                 )
                 translated += parseChatResponse(responseText, pending)
                 pending = pending.filterNot(translated::containsKey)
@@ -89,6 +90,67 @@ class TranslationClient(
         if (translated.isNotEmpty()) return@withContext translated
         throw lastError ?: IOException("Translation request failed")
     }
+
+    /**
+     * Translates with an AI review gate: every translation is handed back to the model for
+     * proofreading, and only names the reviewer accepts are returned. Rejected names are
+     * translated again (with an explicit correction hint) for up to [rounds] rounds.
+     */
+    suspend fun translateVerified(
+        eventNames: List<String>,
+        settings: TranslationSettings,
+        apiKey: String,
+        rounds: Int = VERIFICATION_ROUNDS,
+        retryRejected: Boolean = false,
+    ): Map<String, Pair<String, String>> = withContext(Dispatchers.IO) {
+        if (eventNames.isEmpty()) return@withContext emptyMap()
+        resetRejectedIfProviderChanged(settings)
+        val verified = linkedMapOf<String, Pair<String, String>>()
+        var pending = eventNames.distinct().filterNot { !retryRejected && it in rejected }
+        repeat(maxOf(1, rounds)) { round ->
+            if (pending.isEmpty()) return@withContext verified
+            val attempt = translate(pending, settings, apiKey, revise = round > 0)
+            if (attempt.isEmpty()) return@withContext verified
+            val accepted = runCatching { verify(attempt, settings, apiKey) }.getOrElse {
+                // A reviewer that cannot answer (endpoint error or unusable reply) must not
+                // block usable translations forever; only explicit rejections trigger a retry.
+                verified += attempt
+                return@withContext verified
+            }
+            accepted.forEach { name -> attempt[name]?.let { verified[name] = it } }
+            pending = attempt.keys.filterNot(accepted::contains)
+        }
+        // Names whose review kept failing are not retried until the provider changes,
+        // otherwise every page load would pay for the same rejected attempts again.
+        rejected += pending
+        verified
+    }
+
+    private fun resetRejectedIfProviderChanged(settings: TranslationSettings) {
+        val signature = "${settings.baseUrl}|${settings.model}"
+        if (rejectedProvider != signature) {
+            rejectedProvider = signature
+            rejected.clear()
+        }
+    }
+
+    /** Returns the subset of [translations] the model confirms as accurate. */
+    suspend fun verify(
+        translations: Map<String, Pair<String, String>>,
+        settings: TranslationSettings,
+        apiKey: String,
+    ): Set<String> = withContext(Dispatchers.IO) {
+        if (translations.isEmpty()) return@withContext emptySet()
+        val responseText = execute(
+            endpoint = chatEndpoint(settings.baseUrl),
+            apiKey = apiKey,
+            payload = reviewPayload(translations, settings.model),
+        )
+        parseVerdictResponse(responseText, translations)
+    }
+
+    private fun chatEndpoint(baseUrl: String): String =
+        if (baseUrl.endsWith("/chat/completions")) baseUrl else "$baseUrl/chat/completions"
 
     private fun execute(endpoint: String, apiKey: String, payload: Map<String, Any>): String {
         val request = Request.Builder()
@@ -110,15 +172,23 @@ class TranslationClient(
         eventNames: List<String>,
         model: String,
         useResponseFormat: Boolean,
+        revise: Boolean = false,
     ): Map<String, Any> {
         val input = eventNames.mapIndexed { index, name -> mapOf("id" to index, "name" to name) }
+        val instruction = buildString {
+            append("Translate each macroeconomic event name into Simplified Chinese and Traditional Chinese. ")
+            append("Preserve numbers, periods and abbreviations. ")
+            if (revise) {
+                append("A previous attempt was rejected by quality review: fix the accuracy, use standard ")
+                append("macroeconomic terminology, and keep both Chinese variants equivalent. ")
+            }
+            append("Reply with JSON only: {\"translations\":[{\"id\":0,\"zhCn\":\"...\",\"zhTw\":\"...\"}]}. ")
+            append("Include every input id exactly once.")
+        }
         val values = linkedMapOf<String, Any>(
             "model" to model,
             "messages" to listOf(
-                mapOf(
-                    "role" to "system",
-                    "content" to "Translate each macroeconomic event name into Simplified Chinese and Traditional Chinese. Preserve numbers, periods and abbreviations. Reply with JSON only: {\"translations\":[{\"id\":0,\"zhCn\":\"...\",\"zhTw\":\"...\"}]}. Include every input id exactly once.",
-                ),
+                mapOf("role" to "system", "content" to instruction),
                 mapOf("role" to "user", "content" to gson.toJson(mapOf("events" to input))),
             ),
             "stream" to false,
@@ -126,6 +196,24 @@ class TranslationClient(
         )
         if (useResponseFormat) values["response_format"] = mapOf("type" to "json_object")
         return values
+    }
+
+    private fun reviewPayload(
+        translations: Map<String, Pair<String, String>>,
+        model: String,
+    ): Map<String, Any> {
+        val items = translations.entries.mapIndexed { index, (name, value) ->
+            mapOf("id" to index, "en" to name, "zhCn" to value.first, "zhTw" to value.second)
+        }
+        return linkedMapOf(
+            "model" to model,
+            "messages" to listOf(
+                mapOf("role" to "system", "content" to REVIEW_INSTRUCTION),
+                mapOf("role" to "user", "content" to gson.toJson(mapOf("items" to items))),
+            ),
+            "stream" to false,
+            "max_tokens" to 2048,
+        )
     }
 
     internal fun parseModelsResponse(responseText: String): List<String> {
@@ -156,20 +244,86 @@ class TranslationClient(
         val content = if (root.isJsonObject && root.asJsonObject.has("translations")) {
             root
         } else {
-            val choice = root.asJsonObject.getAsJsonArray("choices")
-                ?.firstOrNull()?.asJsonObject
-                ?: error("Translation API returned no choices")
-            val message = choice.getAsJsonObject("message")
-            val value = message?.get("content")
-                ?.takeUnless {
-                    it.isJsonNull || (it.isJsonPrimitive && it.asStringOrNull().isNullOrBlank())
-                }
-                ?: message?.get("reasoning_content")
-                ?: choice.get("text")
-                ?: error("Translation API returned no content")
-            if (value.isJsonObject || value.isJsonArray) value else parseModelJson(value.asString)
+            extractModelContent(root)
         }
         return parseTranslations(content, eventNames)
+    }
+
+    /** Parses the reviewer verdicts, returning only the names explicitly confirmed as accurate. */
+    internal fun parseVerdictResponse(
+        responseText: String,
+        translations: Map<String, Pair<String, String>>,
+    ): Set<String> {
+        val names = translations.keys.toList()
+        val root = JsonParser.parseString(responseText)
+        val direct = root.isJsonObject && root.asJsonObject.let {
+            it.has("verdicts") || it.has("verified") || it.has("approved")
+        }
+        val content = if (direct) root else extractModelContent(root)
+        val verified = linkedSetOf<String>()
+
+        fun acceptRow(row: JsonObject, index: Int) {
+            val id = row.intOrNull("id") ?: index
+            val ok = row.booleanOrNull("ok", "valid", "verified", "pass", "passed", "correct", "accepted")
+            if (ok == true && id in names.indices) verified += names[id]
+        }
+
+        fun acceptPlain(element: JsonElement) {
+            when {
+                element.isJsonPrimitive && element.asJsonPrimitive.isNumber -> {
+                    val id = element.asInt
+                    if (id in names.indices) verified += names[id]
+                }
+                element.isJsonPrimitive && element.asJsonPrimitive.isString -> {
+                    val name = element.asString.trim()
+                    if (name in translations) verified += name
+                }
+            }
+        }
+
+        when {
+            content.isJsonObject -> {
+                val obj = content.asJsonObject
+                val rows = obj.getAsJsonArray("verdicts")
+                    ?: obj.getAsJsonArray("items")
+                    ?: obj.getAsJsonArray("results")
+                if (rows != null) {
+                    rows.forEachIndexed { index, element ->
+                        if (element.isJsonObject) acceptRow(element.asJsonObject, index)
+                    }
+                } else {
+                    val listed = obj.getAsJsonArray("verified") ?: obj.getAsJsonArray("approved")
+                        ?: error("Review API returned no verdicts")
+                    listed.forEach(::acceptPlain)
+                }
+            }
+            content.isJsonArray -> content.asJsonArray.forEachIndexed { index, element ->
+                when {
+                    element.isJsonObject -> acceptRow(element.asJsonObject, index)
+                    else -> acceptPlain(element)
+                }
+            }
+            else -> error("Review API returned an invalid result")
+        }
+        return verified
+    }
+
+    private fun extractModelContent(
+        root: JsonElement,
+        missing: String = "Translation API returned no content",
+    ): JsonElement {
+        val choice = root.asJsonObject.getAsJsonArray("choices")
+            ?.firstOrNull()?.asJsonObject
+            ?: error("Translation API returned no choices")
+        val message = choice.getAsJsonObject("message")
+        val value = message?.get("content")
+            ?.takeUnless {
+                it.isJsonNull || (it.isJsonPrimitive && it.asStringOrNull().isNullOrBlank())
+            }
+            ?: message?.get("reasoning_content")
+            ?: choice.get("text")
+            ?: error(missing)
+        return if (value.isJsonObject || value.isJsonArray) value else parseModelJson(value.asString)
     }
 
     private fun parseModelJson(raw: String): JsonElement {
@@ -220,16 +374,29 @@ class TranslationClient(
 
     companion object {
         private const val MAX_ATTEMPTS = 3
+        private const val VERIFICATION_ROUNDS = 3
         private const val MODEL_LIST_ATTEMPTS = 2
         private const val MODEL_LIST_TIMEOUT_SECONDS = 25L
         private const val RETRY_DELAY_MS = 1_500L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        private const val REVIEW_INSTRUCTION =
+            "Review each macroeconomic event name and its Simplified Chinese (zhCn) and " +
+                "Traditional Chinese (zhTw) translations. Set ok to true only when both " +
+                "translations are accurate, complete, idiomatic for financial news, and " +
+                "equivalent to each other. Reply with JSON only: " +
+                "{\"verdicts\":[{\"id\":0,\"ok\":true}]}. Include every item id exactly once."
 
         private fun JsonElement.asStringOrNull(): String? =
             takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
 
         private fun JsonObject.intOrNull(name: String): Int? =
             runCatching { get(name)?.takeUnless { it.isJsonNull }?.asInt }.getOrNull()
+
+        private fun JsonObject.booleanOrNull(vararg names: String): Boolean? =
+            names.firstNotNullOfOrNull { name ->
+                runCatching { get(name)?.takeUnless { it.isJsonNull }?.asBoolean }.getOrNull()
+            }
 
         private fun JsonObject.firstString(vararg names: String): String? = names.firstNotNullOfOrNull { name ->
             runCatching { get(name)?.takeUnless { it.isJsonNull }?.asString }.getOrNull()

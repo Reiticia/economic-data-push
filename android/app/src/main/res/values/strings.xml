@@ -31,6 +31,7 @@
     <string name="previous_week">Previous week</string>
     <string name="next_week">Next week</string>
     <string name="load_failed">Unable to load: %1$s</string>
+    <string name="loading_data">Loading…</string>
     <string name="no_filtered_events">No events match these filters</string>
     <string name="importance">Importance</string>
     <string name="countries_regions">Countries / regions</string>
@@ -194,6 +195,7 @@
     <string name="category_reserves">Foreign exchange reserves</string>
     <string name="basis_points">bp</string>
     <string name="date_pattern">MMM d · EEEE</string>
+    <string name="short_date_pattern">MMM d</string>
     <string name="month_pattern">MMMM yyyy</string>
     <string name="notification_channel">Economic releases</string>
     <string name="notification_channel_description">Data release and analysis completion alerts</string>
@@ -219,4 +221,19 @@
     <string name="coverage_missing_samples">Some exact time windows are missing, including possible market closures or insufficient time resolution. No prices were interpolated.</string>
     <string name="history_load_more">Load older releases</string>
     <string name="history_refresh">Refresh history</string>
+    <string name="ai_analysis">AI market analysis</string>
+    <string name="ai_analyze">Generate analysis</string>
+    <string name="ai_reanalyze">Re-analyze</string>
+    <string name="ai_analysis_hint">Uses your configured AI endpoint to explain how this release transmits through rates, the dollar and risk assets.</string>
+    <string name="ai_requires_key">Add an API key in Settings to generate AI analysis.</string>
+    <string name="ai_needs_release">This release has no published value yet.</string>
+    <string name="ai_chain">Transmission chain</string>
+    <string name="ai_data_analysis">Data read</string>
+    <string name="ai_market_outlook">Market outlook</string>
+    <string name="ai_risks">Risks</string>
+    <string name="ai_generated_at">Generated %1$s · %2$s · revision %3$d</string>
+    <string name="analysis_rule_summary">Calculated on this device from the published actual and consensus values. Market returns use public one-minute candles when available and are descriptive, not investment advice.</string>
+    <string name="rationale_tighter_baseline">A tighter policy path is the rule-based baseline.</string>
+    <string name="rationale_easier_baseline">An easier policy path is the rule-based baseline.</string>
+    <string name="rationale_no_directional_signal">The release does not produce a directional rule signal.</string>
 </resources>
