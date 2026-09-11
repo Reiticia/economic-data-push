@@ -236,6 +236,17 @@
     <string name="history_load_more">Load older releases</string>
     <string name="history_refresh">Refresh history</string>
     <string name="ai_analysis">AI market analysis</string>
+    <string name="ai_analysis_method">AI analysis method</string>
+    <string name="ai_analysis_method_note">Applies to newly generated briefings; already cached ones keep their content.</string>
+    <string name="ai_method_numbers_only">Released numbers and rules only</string>
+    <string name="ai_method_numbers_only_note">Market moves are never sent. The model reasons from the numbers and the rule signal, and states what would confirm its view.</string>
+    <string name="ai_method_two_stage">Expectation first, then compare with the moves</string>
+    <string name="ai_method_two_stage_note">Two passes: an ex-ante chain from the numbers and rules, then a comparison against the observed moves with a verdict per link.</string>
+    <string name="ai_method_single_pass">Numbers, rules and moves in one pass</string>
+    <string name="ai_method_single_pass_note">One request containing everything, including the observed moves.</string>
+    <string name="verdict_confirmed">Confirmed by the observed move</string>
+    <string name="verdict_contradicted">Contradicted by the observed move</string>
+    <string name="verdict_unobserved">No usable move for this link</string>
     <string name="ai_analysis_failed">Generation failed: %1$s</string>
     <string name="ai_analyze">Generate analysis</string>
     <string name="ai_reanalyze">Re-analyze</string>

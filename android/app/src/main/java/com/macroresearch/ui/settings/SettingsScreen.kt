@@ -89,6 +89,7 @@ fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
         ) {
             item { CalendarNetworkSettings(repository) }
             item { TranslationApiSettings(repository) }
+            item { AnalysisMethodSettings(repository) }
             item { LanguageSettings(translation.configured) }
             item {
                 SettingsGroup(

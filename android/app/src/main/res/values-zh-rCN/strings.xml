@@ -235,6 +235,17 @@
     <string name="history_load_more">加载更早的事件</string>
     <string name="history_refresh">刷新历史数据</string>
     <string name="ai_analysis">AI 市场分析</string>
+    <string name="ai_analysis_method">AI 分析方法</string>
+    <string name="ai_analysis_method_note">仅影响新生成的分析，已缓存的分析保持原内容。</string>
+    <string name="ai_method_numbers_only">只用公布值与规则</string>
+    <string name="ai_method_numbers_only_note">不发送任何行情涨跌。模型只根据数据与规则信号推理，并说明哪些情况会验证其判断。</string>
+    <string name="ai_method_two_stage">先给预期，再对比行情</string>
+    <string name="ai_method_two_stage_note">分两次请求：先只凭数据与规则给出事前链条，再用实际行情逐条核对并标注是否被验证。</string>
+    <string name="ai_method_single_pass">数据、规则与行情一次给出</string>
+    <string name="ai_method_single_pass_note">一次请求包含全部内容，包括已发生的行情涨跌。</string>
+    <string name="verdict_confirmed">已被行情验证</string>
+    <string name="verdict_contradicted">与行情相矛盾</string>
+    <string name="verdict_unobserved">该环节缺少可用行情</string>
     <string name="ai_analysis_failed">生成失败：%1$s</string>
     <string name="ai_analyze">生成分析</string>
     <string name="ai_reanalyze">重新分析</string>

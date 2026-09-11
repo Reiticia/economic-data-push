@@ -133,6 +133,8 @@ data class TransmissionStep(
     val to: String,
     val direction: String,
     val rationale: String,
+    /** Set by the comparison pass: confirmed / contradicted / unobserved. */
+    val verdict: String? = null,
 )
 
 /** AI market analysis for a released event, cached locally and re-runnable. */

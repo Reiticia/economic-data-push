@@ -3,6 +3,7 @@ package com.macroresearch.data.remote
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.macroresearch.data.AnalysisMethod
 import com.macroresearch.data.TranslationSettings
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.ExpectedReaction
@@ -45,22 +46,57 @@ data class AiAnalysisDraft(
  */
 class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson) {
 
+    /**
+     * Runs the briefing in the shape the user configured. Observed moves are only ever revealed
+     * in a pass that is explicitly allowed to see them, so the ex-ante reasoning stays honest.
+     */
     suspend fun analyze(
         input: AiAnalysisInput,
         settings: TranslationSettings,
         apiKey: String,
+        method: AnalysisMethod = AnalysisMethod.DEFAULT,
     ): AiAnalysisDraft = withContext(Dispatchers.IO) {
+        val hasMoves = input.observedReactions.any { it.hasAnyChange() }
+        // Without usable moves every method degrades to the numbers-and-rules briefing.
+        if (!hasMoves || method == AnalysisMethod.NUMBERS_ONLY) {
+            return@withContext request(input, settings, apiKey, AnalysisStage.EXPECTATION, includeMoves = false)
+        }
+        if (method == AnalysisMethod.SINGLE_PASS) {
+            return@withContext request(input, settings, apiKey, AnalysisStage.SINGLE_PASS, includeMoves = true)
+        }
+        val expectation = request(input, settings, apiKey, AnalysisStage.EXPECTATION, includeMoves = false)
+        val comparison = request(
+            input, settings, apiKey, AnalysisStage.COMPARISON,
+            includeMoves = true, expectation = expectation,
+        )
+        comparison.copy(
+            // The numbers read and the chain were produced before the moves were revealed, so the
+            // second pass may only validate them; it never rewrites the ex-ante reasoning.
+            dataAnalysis = expectation.dataAnalysis.ifBlank { comparison.dataAnalysis },
+            chain = comparison.chain.ifEmpty { expectation.chain },
+            risks = comparison.risks ?: expectation.risks,
+        )
+    }
+
+    private suspend fun request(
+        input: AiAnalysisInput,
+        settings: TranslationSettings,
+        apiKey: String,
+        stage: AnalysisStage,
+        includeMoves: Boolean,
+        expectation: AiAnalysisDraft? = null,
+    ): AiAnalysisDraft {
         val endpoint = chatEndpoint(settings.baseUrl)
-        val request = { jsonMode: Boolean ->
-            execute(endpoint, apiKey, payload(input, settings.model, jsonMode))
+        val call = { jsonMode: Boolean ->
+            execute(endpoint, apiKey, payload(input, settings.model, jsonMode, stage, includeMoves, expectation))
         }
         val responseText = try {
-            request(true)
+            call(true)
         } catch (rejected: ApiException) {
             // Not every OpenAI-compatible gateway accepts response_format.
-            if (rejected.code in UNSUPPORTED_JSON_MODE_CODES) request(false) else throw rejected
+            if (rejected.code in UNSUPPORTED_JSON_MODE_CODES) call(false) else throw rejected
         }
-        parseResponse(responseText)
+        return parseResponse(responseText)
     }
 
     fun encodeChain(chain: List<TransmissionStep>): String = gson.toJson(chain)
@@ -72,7 +108,7 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
     private fun chatEndpoint(baseUrl: String): String =
         if (baseUrl.endsWith("/chat/completions")) baseUrl else "$baseUrl/chat/completions"
 
-    private fun execute(endpoint: String, apiKey: String, payload: Map<String, Any>): String {
+    private fun execute(endpoint: String, apiKey: String, payload: Map<String, Any?>): String {
         val request = Request.Builder()
             .url(endpoint)
             .header("Authorization", "Bearer $apiKey")
@@ -88,7 +124,14 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
         }
     }
 
-    private fun payload(input: AiAnalysisInput, model: String, jsonMode: Boolean): Map<String, Any> {
+    private fun payload(
+        input: AiAnalysisInput,
+        model: String,
+        jsonMode: Boolean,
+        stage: AnalysisStage,
+        includeMoves: Boolean,
+        expectation: AiAnalysisDraft?,
+    ): Map<String, Any?> {
         // The briefing is read next to cards that render device-local time, so hand the model
         // the local clock as well as the precise instant.
         val zone = ZoneId.systemDefault()
@@ -125,17 +168,18 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
                 "change60m" to it.change60m,
             )
         }
-        val user = mapOf(
-            "event" to event,
-            "ruleSignal" to input.macroSignal,
-            "rawSurprise" to input.rawSurprise,
-            "expectedReactions" to expected,
-            "observedReactions" to observed,
-        )
-        return linkedMapOf<String, Any>(
+        val user = buildMap<String, Any?> {
+            put("event", event)
+            put("ruleSignal", input.macroSignal)
+            put("rawSurprise", input.rawSurprise)
+            put("expectedReactions", expected)
+            if (includeMoves) put("observedReactions", observed)
+            expectation?.let { put("exAnteExpectation", exAnte(it)) }
+        }
+        return linkedMapOf<String, Any?>(
             "model" to model,
             "messages" to listOf(
-                mapOf("role" to "system", "content" to systemPrompt(input.languageTag)),
+                mapOf("role" to "system", "content" to systemPrompt(input.languageTag, stage)),
                 mapOf("role" to "user", "content" to gson.toJson(user)),
             ),
             "stream" to false,
@@ -147,18 +191,57 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
         }
     }
 
-    private fun systemPrompt(languageTag: String): String = buildString {
+    private fun exAnte(draft: AiAnalysisDraft): Map<String, Any?> = mapOf(
+        "chain" to draft.chain.map {
+            mapOf("from" to it.from, "to" to it.to, "direction" to it.direction, "rationale" to it.rationale)
+        },
+        "dataAnalysis" to draft.dataAnalysis,
+        "marketOutlook" to draft.marketOutlook,
+        "risks" to draft.risks,
+    )
+
+    private fun systemPrompt(languageTag: String, stage: AnalysisStage): String = buildString {
         append("You are a macro market analyst writing a post-release briefing for one economic event. ")
         append("Use only the numbers and observations in the payload; never invent data. ")
-        append("Explain the causal transmission from the data surprise to asset prices step by step. ")
+        when (stage) {
+            AnalysisStage.EXPECTATION -> append(
+                "No market reaction data is provided and none exists yet in your reading: build the chain " +
+                    "and the outlook from the released numbers and the rule signal only, and never state or " +
+                    "guess what prices did. Frame the outlook as conditional expectations and say what would " +
+                    "confirm or invalidate each link. ",
+            )
+            AnalysisStage.SINGLE_PASS -> append(
+                "Explain the causal transmission from the data surprise to asset prices step by step, and " +
+                    "treat the observed moves as evidence of which links held. ",
+            )
+            AnalysisStage.COMPARISON -> append(
+                "You already produced an ex-ante expectation without seeing any prices; it is supplied as " +
+                    "exAnteExpectation. The payload now also carries the observed post-release moves. Reuse " +
+                    "the ex-ante chain in its original order, add a verdict to every link (confirmed, " +
+                    "contradicted or unobserved) based only on those moves, and you may add a link only when " +
+                    "the data requires it. Never rewrite the ex-ante reasoning to look prescient. ",
+            )
+        }
         append("Reply with JSON only, no reasoning, no plan, no markdown fence, no text before or after: {")
-        append("\"chain\":[{\"from\":\"...\",\"to\":\"...\",\"direction\":\"up|down|flat\",\"rationale\":\"...\"}],")
+        append("\"chain\":[{\"from\":\"...\",\"to\":\"...\",\"direction\":\"up|down|flat\",\"rationale\":\"...\"")
+        if (stage == AnalysisStage.COMPARISON) append(",\"verdict\":\"confirmed|contradicted|unobserved\"")
+        append("}],")
         append("\"dataAnalysis\":\"...\",\"marketOutlook\":\"...\",\"risks\":\"...\"}. ")
         append("chain is ordered from the surprise to the final asset reaction using short node names ")
         append("(for example \"CPI surprise\", \"real yields\", \"US dollar\", \"gold\"). ")
         append("dataAnalysis: 2-4 sentences comparing actual with consensus, forecast and previous, ")
-        append("including revisions or caveats. marketOutlook: 2-4 sentences on how rates, the dollar and ")
-        append("risk assets are likely to trade next and what would invalidate the view. ")
+        append("including revisions or caveats. ")
+        when (stage) {
+            AnalysisStage.COMPARISON -> append(
+                "marketOutlook: 3-5 sentences in one paragraph covering, in order, the ex-ante expectation, " +
+                    "what the observed moves actually showed (naming the numbers), and the revised view with " +
+                    "its invalidation condition. ",
+            )
+            else -> append(
+                "marketOutlook: 2-4 sentences on how rates, the dollar and risk assets are likely to trade " +
+                    "next and what would invalidate the view. ",
+            )
+        }
         append("risks: 1-2 sentences on the main risk to this chain. State uncertainty explicitly. ")
         append("Quote release times in the reader's local time zone given by timeZone. ")
         append("Write in ").append(outputLanguage(languageTag)).append(". ")
@@ -237,7 +320,16 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
             to = to,
             direction = normalizeDirection(row.firstString("direction", "dir", "sign")),
             rationale = row.firstString("rationale", "reason", "why", "explanation").orEmpty().trim(),
+            verdict = normalizeVerdict(row.firstString("verdict", "status", "result", "validation")),
         )
+    }
+
+    private fun normalizeVerdict(raw: String?): String? = when (raw?.trim()?.lowercase(Locale.ROOT)) {
+        null, "" -> null
+        "confirmed", "confirm", "validated", "holds", "held", "in line", "✓" -> "confirmed"
+        "contradicted", "contradiction", "invalidated", "refuted", "failed", "✗" -> "contradicted"
+        "unobserved", "unknown", "unclear", "n/a", "na", "not observed", "no data" -> "unobserved"
+        else -> null
     }
 
     private fun normalizeDirection(raw: String?): String {
@@ -251,6 +343,12 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
     }
 
     private class ApiException(val code: Int, message: String) : IOException(message)
+
+    /** Which prompt/payload shape a request uses. */
+    private enum class AnalysisStage { EXPECTATION, COMPARISON, SINGLE_PASS }
+
+    private fun MarketReaction.hasAnyChange(): Boolean =
+        listOfNotNull(change1m, change5m, change15m, change30m, change60m).isNotEmpty()
 
     companion object {
         /** Debug-only hook; the app logs raw model output when a reply cannot be parsed. */

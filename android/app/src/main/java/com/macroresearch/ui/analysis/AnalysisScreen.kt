@@ -38,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -224,10 +226,37 @@ private fun ChainStepRow(step: TransmissionStep) {
         "down" -> AssetDown
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    // A verdict only exists when the second pass compared the expectation with the moves.
+    val verdict = step.verdict?.let { value ->
+        when (value) {
+            "confirmed" -> "✓" to AssetUp
+            "contradicted" -> "✗" to AssetDown
+            else -> "?" to MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    }
+    val verdictLabel = step.verdict?.let {
+        stringResource(
+            when (it) {
+                "confirmed" -> R.string.verdict_confirmed
+                "contradicted" -> R.string.verdict_contradicted
+                else -> R.string.verdict_unobserved
+            },
+        )
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Column(Modifier.weight(1f)) {
-            Text("${step.from} $arrow ${step.to}", fontWeight = FontWeight.Medium, color = color, style = MaterialTheme.typography.bodyMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("${step.from} $arrow ${step.to}", fontWeight = FontWeight.Medium, color = color, style = MaterialTheme.typography.bodyMedium)
+                verdict?.let { (glyph, tint) ->
+                    Text(
+                        glyph,
+                        color = tint,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.semantics { verdictLabel?.let { contentDescription = it } },
+                    )
+                }
+            }
             if (step.rationale.isNotBlank()) {
                 Text(step.rationale, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
