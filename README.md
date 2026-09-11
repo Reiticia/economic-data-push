@@ -1,9 +1,9 @@
-# Economic Data Push
+# Macro Research
 
 纯 Android 的宏观财经事件研究客户端，不需要部署或维护项目自建服务器。
 
 ```text
-economic-data-push/
+macro-research/
 ├── android/   Kotlin、Jetpack Compose、Room 客户端
 └── docs/      客户端数据流与安全设计
 ```
@@ -13,9 +13,10 @@ economic-data-push/
 Android 客户端直接获取并处理公开数据：
 
 - 财经日历：TradingView 经济日历 JSON 接口，失败时回退 Forex Factory 公开 JSON
-- 股票指数与美债：Yahoo Finance
+- 美债收益率：CNBC 报价与 1 分钟 K 线，失败时回退 Yahoo Finance
+- 股票指数、外汇与贵金属：BiQuote，失败时回退 Yahoo Finance
 - 加密资产：Binance
-- 外汇与贵金属：BiQuote，失败时回退 Yahoo Finance
+- 可选 HTTP 代理：仅用于日历与行情请求，便于在受限网络下访问上述源；AI 与翻译请求不经代理
 - 事件分析：设备端规则引擎
 - AI 市场分析：用户配置的 OpenAI 兼容接口，事件公布后生成传导链路与走势分析，本地缓存且可重新生成
 - 缓存：Room 本地数据库
