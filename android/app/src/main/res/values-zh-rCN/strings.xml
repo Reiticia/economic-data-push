@@ -235,6 +235,7 @@
     <string name="history_load_more">加载更早的事件</string>
     <string name="history_refresh">刷新历史数据</string>
     <string name="ai_analysis">AI 市场分析</string>
+    <string name="ai_analysis_failed">生成失败：%1$s</string>
     <string name="ai_analyze">生成分析</string>
     <string name="ai_reanalyze">重新分析</string>
     <string name="ai_analysis_hint">调用你配置的 AI 接口，说明该数据如何经由利率、美元与风险资产传导。</string>

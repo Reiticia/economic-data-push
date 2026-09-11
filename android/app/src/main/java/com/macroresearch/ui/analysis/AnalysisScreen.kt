@@ -183,7 +183,11 @@ private fun AiAnalysisCard(
                 }
             }
             ai.error?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    stringResource(R.string.ai_analysis_failed, it),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             if (ai.error != null && ai.analysis != null) {
                 TextButton(onClick = onGenerate) { Text(stringResource(R.string.retry)) }

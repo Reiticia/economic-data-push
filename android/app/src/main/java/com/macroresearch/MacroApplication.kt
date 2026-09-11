@@ -63,6 +63,9 @@ class MacroApplication : Application() {
         val database = Room.databaseBuilder(this, MacroDatabase::class.java, "macro.db")
             .addMigrations(MacroDatabase.MIGRATION_1_2, MacroDatabase.MIGRATION_2_3, MacroDatabase.MIGRATION_3_4)
             .build()
+        if (BuildConfig.DEBUG) {
+            AiAnalysisClient.responseObserver = { android.util.Log.d("AiAnalysisRaw", it.take(4000)) }
+        }
         val calendarNetwork = CalendarNetworkPreferences(this)
         repository = MacroRepository(
             calendarClient = EconomicCalendarClient(http, proxy = calendarNetwork::proxy),

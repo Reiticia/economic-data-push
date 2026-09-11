@@ -355,22 +355,12 @@ class TranslationClient(
     }
 
     private fun parseModelJson(raw: String): JsonElement {
-        var content = raw.trim()
-        content = content.replace(Regex("^```(?:json)?\\s*", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\s*```$"), "")
-            .trim()
-        runCatching { return JsonParser.parseString(content) }
-        val objectStart = content.indexOf('{')
-        val objectEnd = content.lastIndexOf('}')
-        if (objectStart >= 0 && objectEnd > objectStart) {
-            return JsonParser.parseString(content.substring(objectStart, objectEnd + 1))
-        }
-        val arrayStart = content.indexOf('[')
-        val arrayEnd = content.lastIndexOf(']')
-        if (arrayStart >= 0 && arrayEnd > arrayStart) {
-            return JsonParser.parseString(content.substring(arrayStart, arrayEnd + 1))
-        }
-        error("Translation API returned invalid JSON")
+        val candidates = ModelJson.values(raw)
+        // Prefer an explicit translation payload, then a list, then whatever parsed.
+        candidates.firstOrNull { it.isJsonObject && (it.asJsonObject.has("translations") || it.asJsonObject.has("items")) }
+            ?.let { return it }
+        candidates.firstOrNull { it.isJsonArray }?.let { return it }
+        return candidates.firstOrNull() ?: error("Translation API returned invalid JSON")
     }
 
     private fun parseTranslations(

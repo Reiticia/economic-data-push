@@ -236,6 +236,7 @@
     <string name="history_load_more">Load older releases</string>
     <string name="history_refresh">Refresh history</string>
     <string name="ai_analysis">AI market analysis</string>
+    <string name="ai_analysis_failed">Generation failed: %1$s</string>
     <string name="ai_analyze">Generate analysis</string>
     <string name="ai_reanalyze">Re-analyze</string>
     <string name="ai_analysis_hint">Uses your configured AI endpoint to explain how this release transmits through rates, the dollar and risk assets.</string>

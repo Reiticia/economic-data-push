@@ -3,7 +3,6 @@ package com.macroresearch.data.remote
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
-import com.google.gson.JsonParser
 import com.macroresearch.data.TranslationSettings
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.ExpectedReaction
@@ -45,12 +44,22 @@ data class AiAnalysisDraft(
  * numbers and a market outlook. The caller persists the result.
  */
 class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson) {
+
     suspend fun analyze(
         input: AiAnalysisInput,
         settings: TranslationSettings,
         apiKey: String,
     ): AiAnalysisDraft = withContext(Dispatchers.IO) {
-        val responseText = execute(chatEndpoint(settings.baseUrl), apiKey, payload(input, settings.model))
+        val endpoint = chatEndpoint(settings.baseUrl)
+        val request = { jsonMode: Boolean ->
+            execute(endpoint, apiKey, payload(input, settings.model, jsonMode))
+        }
+        val responseText = try {
+            request(true)
+        } catch (rejected: ApiException) {
+            // Not every OpenAI-compatible gateway accepts response_format.
+            if (rejected.code in UNSUPPORTED_JSON_MODE_CODES) request(false) else throw rejected
+        }
         parseResponse(responseText)
     }
 
@@ -73,13 +82,13 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IOException("AI analysis API returned HTTP ${response.code}")
+                throw ApiException(response.code, "AI analysis API returned HTTP ${response.code}")
             }
             return body
         }
     }
 
-    private fun payload(input: AiAnalysisInput, model: String): Map<String, Any> {
+    private fun payload(input: AiAnalysisInput, model: String, jsonMode: Boolean): Map<String, Any> {
         // The briefing is read next to cards that render device-local time, so hand the model
         // the local clock as well as the precise instant.
         val zone = ZoneId.systemDefault()
@@ -123,22 +132,26 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
             "expectedReactions" to expected,
             "observedReactions" to observed,
         )
-        return linkedMapOf(
+        return linkedMapOf<String, Any>(
             "model" to model,
             "messages" to listOf(
                 mapOf("role" to "system", "content" to systemPrompt(input.languageTag)),
                 mapOf("role" to "user", "content" to gson.toJson(user)),
             ),
             "stream" to false,
-            "max_tokens" to 2048,
-        )
+            // Reasoning-capable models spend tokens on their thinking before the answer, so a
+            // small budget truncates the JSON mid-object.
+            "max_tokens" to MAX_TOKENS,
+        ).apply {
+            if (jsonMode) put("response_format", mapOf("type" to "json_object"))
+        }
     }
 
     private fun systemPrompt(languageTag: String): String = buildString {
         append("You are a macro market analyst writing a post-release briefing for one economic event. ")
         append("Use only the numbers and observations in the payload; never invent data. ")
         append("Explain the causal transmission from the data surprise to asset prices step by step. ")
-        append("Reply with JSON only: {")
+        append("Reply with JSON only, no reasoning, no plan, no markdown fence, no text before or after: {")
         append("\"chain\":[{\"from\":\"...\",\"to\":\"...\",\"direction\":\"up|down|flat\",\"rationale\":\"...\"}],")
         append("\"dataAnalysis\":\"...\",\"marketOutlook\":\"...\",\"risks\":\"...\"}. ")
         append("chain is ordered from the surprise to the final asset reaction using short node names ")
@@ -163,10 +176,13 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
     }
 
     internal fun parseResponse(responseText: String): AiAnalysisDraft {
-        val root = JsonParser.parseString(responseText)
-        val content = extractContent(root)
-        val payload = content.takeIf(JsonElement::isJsonObject)?.asJsonObject
-            ?: error("AI analysis response is not a JSON object")
+        val payload = briefingCandidates(responseText)
+            .mapNotNull(::usableBriefing)
+            .lastOrNull()
+            ?: run {
+                responseObserver?.invoke(responseText)
+                error("AI did not return a usable analysis JSON; the reply may have been truncated or missing the JSON object")
+            }
         val chain = parseChain(payload.firstArray("chain", "transmissionChain", "transmission_chain", "steps", "links"))
         val dataAnalysis = payload
             .firstString("dataAnalysis", "data_analysis", "dataRead", "data_read", "analysis")
@@ -181,34 +197,33 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
         return AiAnalysisDraft(chain, dataAnalysis, marketOutlook, risks)
     }
 
-    private fun extractContent(root: JsonElement): JsonElement {
-        if (root.isJsonObject && (root.asJsonObject.has("chain") || root.asJsonObject.has("dataAnalysis"))) {
-            return root
-        }
-        val choice = root.asJsonObject.getAsJsonArray("choices")
-            ?.firstOrNull()?.asJsonObject
-            ?: error("AI analysis API returned no choices")
-        val message = choice.getAsJsonObject("message")
-        val value = message?.get("content")
-            ?.takeUnless { it.isJsonNull || (it.isJsonPrimitive && it.asStringOrNull().isNullOrBlank()) }
-            ?: message?.get("reasoning_content")
-            ?: choice.get("text")
-            ?: error("AI analysis API returned no content")
-        return if (value.isJsonObject || value.isJsonArray) value else parseModelJson(value.asString)
-    }
+    /**
+     * Every object in the response that could be the briefing: the payload itself, or the
+     * contents of an OpenAI envelope. Reasoning prose often embeds the example schema from the
+     * prompt, so candidates are validated instead of taking the first braces found.
+     */
+    private fun briefingCandidates(responseText: String): List<JsonObject> =
+        ModelJson.values(responseText).flatMap { root ->
+            val fromContents = ModelJson.contents(root).flatMap(ModelJson::objects)
+            val direct = when {
+                root.isJsonObject -> listOf(root.asJsonObject)
+                root.isJsonArray -> root.asJsonArray.filter { it.isJsonObject }.map { it.asJsonObject }
+                else -> emptyList()
+            }
+            direct + fromContents
+        }.distinctBy { it.toString() }
 
-    private fun parseModelJson(raw: String): JsonElement {
-        var content = raw.trim()
-        content = content.replace(Regex("^```(?:json)?\\s*", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("\\s*```$"), "")
-            .trim()
-        runCatching { return JsonParser.parseString(content) }
-        val start = content.indexOf('{')
-        val end = content.lastIndexOf('}')
-        if (start >= 0 && end > start) {
-            return JsonParser.parseString(content.substring(start, end + 1))
-        }
-        error("AI analysis API returned invalid JSON")
+    /** Rejects echo of the prompt schema, which carries placeholder values instead of a result. */
+    private fun usableBriefing(payload: JsonObject): JsonObject? {
+        val text = listOf("dataAnalysis", "data_analysis", "dataRead", "data_read", "analysis",
+            "marketOutlook", "market_outlook", "outlook")
+            .firstNotNullOfOrNull { payload.firstString(it) }
+            ?.trim()
+            .orEmpty()
+        if (text.isBlank()) return null
+        // Rejects the schema echo, whose fields hold placeholders instead of a result.
+        if (PLACEHOLDER_TOKENS.any { it in text }) return null
+        return payload
     }
 
     private fun parseChain(rows: List<JsonElement>?): List<TransmissionStep> = rows.orEmpty().mapNotNull { element ->
@@ -235,7 +250,17 @@ class AiAnalysisClient(private val client: OkHttpClient, private val gson: Gson)
         }
     }
 
+    private class ApiException(val code: Int, message: String) : IOException(message)
+
     companion object {
+        /** Debug-only hook; the app logs raw model output when a reply cannot be parsed. */
+        internal var responseObserver: ((String) -> Unit)? = null
+
+        private const val MAX_TOKENS = 4096
+        private val UNSUPPORTED_JSON_MODE_CODES = setOf(400, 404, 422)
+        /** Fragments of the schema echo; a real briefing never contains them. */
+        private val PLACEHOLDER_TOKENS = listOf("up|down|flat", "...", "short node names", "2-4 sentences")
+
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val LOCAL_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
