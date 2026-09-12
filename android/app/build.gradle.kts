@@ -19,8 +19,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // CI supplies the keystore outside the repository. Local builds without these variables
+    // retain the usual unsigned release output; CI validates all signing inputs before building.
+    val releaseStore = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+    signingConfigs {
+        if (!releaseStore.isNullOrBlank()) {
+            create("ciRelease") {
+                storeFile = file(releaseStore)
+                storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").get()
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (!releaseStore.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("ciRelease")
+            }
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

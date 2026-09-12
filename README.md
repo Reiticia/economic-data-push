@@ -34,3 +34,8 @@ cd android
 ```
 
 详见 [Android 客户端说明](android/README.md) 和 [客户端架构](docs/client_architecture.md)。
+
+## GitHub Release 自动构建
+
+支持 Actions 手动构建签名 APK，以及推送 Tag 时自动发布到 GitHub Releases。
+首次使用需配置四项签名 Secrets，详见 [Release 构建与发布说明](docs/github-release.md)。
