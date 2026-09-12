@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -310,7 +311,8 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            repository.selectedCountries.collect { countries ->
+            // The screen performs the first reset itself; react only to later country changes.
+            repository.selectedCountries.drop(1).collect { countries ->
                 selectedCountries = countries
                 refresh()
             }
@@ -320,7 +322,7 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
         }
     }
 
-    fun refresh(category: String? = _category.value) {
+    fun refresh(category: String? = _category.value, forceNetwork: Boolean = false) {
         request?.cancel()
         val retained = if (category == _category.value) {
             _state.value.value.orEmpty().filter { it.country in selectedCountries }
@@ -328,14 +330,17 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
         _category.value = category
         sourceOffset = 0
         _hasMore.value = selectedCountries.isNotEmpty()
-        // Keep visible history during a retry and on network failure, not a blank screen.
+        // Keep visible history during a retry and on network failure, not a blank screen. A
+        // completed refresh replaces it with the newest eight rows.
         _state.value = LoadState(value = retained, loading = false)
-        if (selectedCountries.isNotEmpty()) loadPage(forceRefresh = true)
+        if (selectedCountries.isNotEmpty()) {
+            loadPage(forceRefresh = forceNetwork, replaceExisting = true)
+        }
     }
 
-    fun loadMore() = loadPage()
+    fun loadMore() = loadPage(replaceExisting = false)
 
-    private fun loadPage(forceRefresh: Boolean = false) {
+    private fun loadPage(forceRefresh: Boolean = false, replaceExisting: Boolean) {
         if (_state.value.loading || !_hasMore.value) return
         val existing = _state.value.value.orEmpty()
         val category = _category.value
@@ -343,18 +348,17 @@ class HistoryViewModel(private val repository: MacroRepository) : ViewModel() {
         request = viewModelScope.launch {
             try {
                 val page = repository.history(
-                    country = selectedCountries.singleOrNull(),
+                    countries = selectedCountries,
                     category = category,
-                    limit = 100,
+                    limit = MacroRepository.HISTORY_PAGE_SIZE,
                     offset = sourceOffset,
                     forceRefresh = forceRefresh,
                 )
                 sourceOffset += page.size
-                val visiblePage = page.filter { it.country in selectedCountries }
-                val merged = (if (forceRefresh) visiblePage + existing else existing + visiblePage)
+                val merged = (if (replaceExisting) page else existing + page)
                     .distinctBy { it.id }
                     .sortedWith(compareByDescending<EconomicEvent> { it.eventTime }.thenByDescending { it.importance })
-                _hasMore.value = page.size == 100
+                _hasMore.value = page.size == MacroRepository.HISTORY_PAGE_SIZE
                 _state.value = LoadState(merged, loading = false)
             } catch (cancelled: CancellationException) {
                 throw cancelled

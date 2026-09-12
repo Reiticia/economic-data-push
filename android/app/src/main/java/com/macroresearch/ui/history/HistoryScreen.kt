@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
@@ -20,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,10 +32,14 @@ import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.ui.HistoryViewModel
 import com.macroresearch.ui.common.EventCard
 import com.macroresearch.ui.common.LoadingHint
+import com.macroresearch.ui.common.calendarWarningMessage
 import com.macroresearch.ui.common.surprise
 import com.macroresearch.ui.theme.AssetDown
 import com.macroresearch.ui.theme.AssetUp
+import com.macroresearch.ui.theme.ResearchLayout
 import com.macroresearch.ui.viewModelFactory
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 
 @Composable
 fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Long) -> Unit) {
@@ -43,15 +49,38 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
     val hasMore by vm.hasMore.collectAsStateWithLifecycle()
     val warning by repository.calendarWarning.collectAsStateWithLifecycle()
     val events = state.value.orEmpty()
-    // Translations are keyed by event name and can be corrected on the detail screen;
-    // re-read them whenever this screen is shown again so corrections appear immediately.
-    LaunchedEffect(Unit) { vm.refreshTranslations() }
+    val listState = rememberLazyListState()
+    // Top-level navigation restores destination state. Reset it deliberately: every visit starts
+    // at the newest eight rows, and older pages are appended only after the user scrolls.
+    LaunchedEffect(Unit) {
+        listState.scrollToItem(0)
+        vm.refresh()
+        vm.refreshTranslations()
+    }
+    // Loading is driven by actual viewport position, not a button: once the final rendered row
+    // reaches the viewport, request the next eight rows from Room.
+    LaunchedEffect(listState, hasMore, state.loading, state.error, events.size) {
+        snapshotFlow {
+            shouldLoadOlder(
+                lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                totalItems = listState.layoutInfo.totalItemsCount,
+                scrolledFromTop = listState.firstVisibleItemIndex > 0 ||
+                    listState.firstVisibleItemScrollOffset > 0,
+                hasMore = hasMore,
+                loading = state.loading,
+                failed = state.error != null,
+            )
+        }
+            .distinctUntilChanged()
+            .filter { it }
+            .collect { vm.loadMore() }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = ResearchLayout.pagePadding, vertical = ResearchLayout.gap),
+        verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
     ) {
         Column {
             Text(stringResource(R.string.history_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -66,7 +95,7 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
                 )
             }
         }
-        TextButton(onClick = { vm.refresh() }, enabled = !state.loading) {
+        TextButton(onClick = { vm.refresh(forceNetwork = true) }, enabled = !state.loading) {
             Text(stringResource(R.string.history_refresh))
         }
         SummaryCards(events)
@@ -75,22 +104,35 @@ fun HistoryScreen(repository: MacroRepository, padding: PaddingValues, onEvent: 
             Text(stringResource(R.string.recent_count, events.size), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
-            warning?.let { item { Text(stringResource(R.string.calendar_source_warning, it), color = MaterialTheme.colorScheme.error) } }
+            warning?.let { item { Text(calendarWarningMessage(it), color = MaterialTheme.colorScheme.error) } }
             state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
             items(events, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }, showDate = true) }
             if (state.loading) item { LoadingHint() }
-            if (hasMore && !state.loading) item {
+            // Normal pagination is automatic. Keep an explicit action only after a failed page,
+            // otherwise an unchanged bottom position would repeatedly retry a broken network.
+            if (hasMore && !state.loading && state.error != null) item {
                 Button(onClick = vm::loadMore, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(if (state.error == null) R.string.history_load_more else R.string.retry))
+                    Text(stringResource(R.string.retry))
                 }
             }
         }
     }
 }
+
+internal fun shouldLoadOlder(
+    lastVisibleIndex: Int,
+    totalItems: Int,
+    scrolledFromTop: Boolean,
+    hasMore: Boolean,
+    loading: Boolean,
+    failed: Boolean,
+): Boolean = scrolledFromTop && hasMore && !loading && !failed && totalItems > 0 &&
+    lastVisibleIndex >= totalItems - 1
 
 @Composable
 private fun SummaryCards(events: List<EconomicEvent>) {
@@ -107,7 +149,7 @@ private fun SummaryCards(events: List<EconomicEvent>) {
 @Composable
 private fun SummaryCard(label: String, count: Int, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
     Card(modifier) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(ResearchLayout.gap), verticalArrangement = Arrangement.spacedBy(ResearchLayout.smallGap)) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = color)
             Text(stringResource(R.string.occurrence_count, count), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }

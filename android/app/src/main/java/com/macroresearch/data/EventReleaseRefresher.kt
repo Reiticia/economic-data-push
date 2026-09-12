@@ -8,7 +8,7 @@ import com.macroresearch.data.remote.EconomicCalendarClient
 import java.time.Instant
 import java.time.ZoneId
 
-internal data class EventReleaseRefreshResult(val event: EconomicEvent, val warning: String?)
+internal data class EventReleaseRefreshResult(val event: EconomicEvent, val warning: CalendarWarning?)
 
 /** A user-triggered retry, independent of history TTLs, translation and market requests. */
 internal class EventReleaseRefresher(

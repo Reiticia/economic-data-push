@@ -27,14 +27,14 @@ interface EventDao {
     @Query(
         """SELECT * FROM cached_event
            WHERE eventTime < :before
-             AND (:country IS NULL OR country = :country)
+             AND country IN (:countries)
              AND (:category IS NULL OR LOWER(category) LIKE '%' || LOWER(:category) || '%')
            ORDER BY eventTime DESC, importance DESC
            LIMIT :limit OFFSET :offset""",
     )
     suspend fun history(
         before: String,
-        country: String?,
+        countries: List<String>,
         category: String?,
         limit: Int,
         offset: Int,

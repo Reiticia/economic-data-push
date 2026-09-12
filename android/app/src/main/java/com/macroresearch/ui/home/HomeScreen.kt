@@ -5,6 +5,8 @@ import com.macroresearch.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +49,7 @@ import com.macroresearch.ui.HomeViewModel
 import com.macroresearch.ui.common.EventCard
 import com.macroresearch.ui.common.ImportanceDots
 import com.macroresearch.ui.common.assetLabel
+import com.macroresearch.ui.common.calendarWarningMessage
 import com.macroresearch.ui.common.importanceLabel
 import com.macroresearch.ui.common.localizedCountdown as countdown
 import com.macroresearch.ui.common.flag
@@ -56,6 +59,7 @@ import com.macroresearch.ui.common.localizedName
 import com.macroresearch.ui.common.localizedValue as value
 import com.macroresearch.ui.market.formatMarketPrice
 import com.macroresearch.ui.theme.Upcoming
+import com.macroresearch.ui.theme.ResearchLayout
 import com.macroresearch.ui.viewModelFactory
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -67,6 +71,11 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
     val vm: HomeViewModel = viewModel(factory = viewModelFactory { HomeViewModel(repository) })
     val events by vm.events.collectAsStateWithLifecycle()
     val refresh by vm.refresh.collectAsStateWithLifecycle()
+    val warning by repository.calendarWarning.collectAsStateWithLifecycle()
+    // The repository publishes a typed reason; the raw provider error stays in the log. A failure
+    // without one is not calendar-related, so fall back to the generic wording.
+    val notice = warning?.let { calendarWarningMessage(it) }
+        ?: if (refresh.error != null) stringResource(R.string.calendar_warning_offline) else null
     val liveMarket by vm.liveMarket.collectAsStateWithLifecycle()
     val selectedMarkets by repository.selectedMarkets.collectAsStateWithLifecycle()
     val now = Instant.now()
@@ -87,8 +96,8 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = ResearchLayout.pagePadding, vertical = ResearchLayout.gap),
+        verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
@@ -117,13 +126,15 @@ fun HomeScreen(repository: MacroRepository, padding: PaddingValues, onEvent: (Lo
         }
         LazyColumn(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
             if (refresh.loading && events.isEmpty()) item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
             }
-            refresh.error?.let { message -> item { Text(stringResource(R.string.offline_cache, message), color = Upcoming) } }
+            // The repository publishes a typed reason; the raw provider error stays in the log.
+            // A failure without one is not calendar-related, so fall back to the generic wording.
+            notice?.let { item { Text(it, color = Upcoming) } }
             items(today, key = { it.id }) { event -> EventCard(event, { onEvent(event.id) }) }
         }
     }
@@ -160,6 +171,7 @@ internal fun marketOverviewRows(selectedMarkets: List<String>): List<List<String
     return selectedMarkets.chunked(columns)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NextEventCard(event: EconomicEvent, onClick: () -> Unit) {
     var now by remember { mutableStateOf(Instant.now()) }
@@ -175,9 +187,14 @@ private fun NextEventCard(event: EconomicEvent, onClick: () -> Unit) {
         ),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(ResearchLayout.cardPadding), verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap)) {
             Text(stringResource(R.string.next_event), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ResearchLayout.smallGap),
+                verticalArrangement = Arrangement.spacedBy(ResearchLayout.smallGap),
+                maxItemsInEachRow = if (ResearchLayout.stackMetadata) 1 else 2,
+            ) {
                 Text("${flag(event.country)}  ${event.localizedName(locale)}", modifier = Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
                     countdown(event.eventTime, now),
@@ -191,7 +208,11 @@ private fun NextEventCard(event: EconomicEvent, onClick: () -> Unit) {
                 Spacer(Modifier.width(8.dp)); Text("· ${importanceLabel(event.importance)}", color = MaterialTheme.colorScheme.tertiary); Spacer(Modifier.width(8.dp)); ImportanceDots(event.importance)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.16f))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ResearchLayout.smallGap),
+                verticalArrangement = Arrangement.spacedBy(ResearchLayout.smallGap),
+            ) {
                 ValueColumn(stringResource(R.string.previous), event.value(event.previous))
                 ValueColumn(stringResource(R.string.consensus), event.value(event.consensus))
                 ValueColumn(stringResource(R.string.forecast), event.value(event.forecast))
@@ -215,7 +236,7 @@ private fun MarketMiniCard(
     val locale = LocalConfiguration.current.locales[0]
     val price = liveQuote?.price
     Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(ResearchLayout.gap)) {
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 price?.let { formatMarketPrice(it, locale) } ?: "--",

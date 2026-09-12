@@ -55,6 +55,7 @@ import com.macroresearch.data.MacroRepository
 import com.macroresearch.data.MarketPreferences
 import com.macroresearch.ui.common.assetLabel
 import com.macroresearch.ui.common.countryLabel
+import com.macroresearch.ui.theme.ResearchLayout
 import kotlinx.coroutines.launch
 
 @Composable
@@ -68,8 +69,8 @@ fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = ResearchLayout.pagePadding, vertical = ResearchLayout.gap),
+        verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
     ) {
         Column {
             Text(
@@ -85,8 +86,9 @@ fun SettingsScreen(repository: MacroRepository, padding: PaddingValues) {
         LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(bottom = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
         ) {
+            item { DisplaySettingsCard() }
             item { DataNetworkSettings(repository) }
             item { TranslationApiSettings(repository) }
             item { AnalysisMethodSettings(repository) }

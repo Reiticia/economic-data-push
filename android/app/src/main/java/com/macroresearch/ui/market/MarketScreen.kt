@@ -37,6 +37,7 @@ import com.macroresearch.ui.common.assetLabel
 import com.macroresearch.ui.theme.AssetDown
 import com.macroresearch.ui.theme.AssetUp
 import com.macroresearch.ui.viewModelFactory
+import com.macroresearch.ui.theme.ResearchLayout
 import kotlinx.coroutines.delay
 import java.text.NumberFormat
 import java.util.Locale
@@ -65,8 +66,8 @@ fun MarketScreen(repository: MacroRepository, padding: PaddingValues) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(ResearchLayout.pagePadding),
+        verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
     ) {
         item {
             Row(
@@ -151,7 +152,7 @@ private fun MarketQuoteCard(symbol: String, quote: LiveMarketQuote?, unavailable
     val marketClosed = quote?.marketState.equals("closed", ignoreCase = true)
     Card {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(ResearchLayout.cardPadding),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {

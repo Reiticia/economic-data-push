@@ -8,7 +8,6 @@
     <string name="nav_settings">Settings</string>
     <string name="research_tagline">Macroeconomic research</string>
     <string name="notifications">Notifications</string>
-    <string name="offline_cache">Offline cache · %1$s</string>
     <string name="today_events">Today’s events</string>
     <string name="event_count">Events: %1$d</string>
     <string name="market_overview">Market overview</string>
@@ -132,7 +131,10 @@
     <string name="data_proxy_invalid">Enter host:port without credentials or a path.</string>
     <string name="data_proxy_saved">Saved. Calendar and market requests will use it.</string>
     <string name="data_proxy_clear">Use system network</string>
-    <string name="calendar_source_warning">Calendar source unavailable; published values may be missing. Records are retained. Check your network or calendar proxy in Settings, then refresh. Details: %1$s</string>
+    <string name="calendar_warning_primary">Primary calendar source unavailable; using the weekly fallback. Published values may be missing. Check your network or calendar proxy in Settings, then refresh.</string>
+    <string name="calendar_warning_offline">Calendar sources unavailable; showing cached data. Check your network or calendar proxy in Settings, then refresh.</string>
+    <string name="calendar_warning_rate_limited">Calendar source is rate-limiting this device; showing cached data. It should recover in about %1$d min.</string>
+    <string name="calendar_warning_rate_limited_unknown">Calendar source is rate-limiting this device; showing cached data. Try again later.</string>
     <string name="release_data_missing">The scheduled time has passed, but no published value has been retrieved. Some events, such as speeches, have no numeric result. Fetch it again below; numerical analysis needs an actual value.</string>
     <string name="release_fetch_action">Retrieve published value</string>
     <string name="release_fetching">Retrieving published value…</string>
@@ -233,7 +235,6 @@
     <string name="coverage_provider_error">Historical source request failed or access was restricted. Retry after resolving the source access issue.</string>
     <string name="coverage_approximate_time">The release time is approximate or all-day; intraday attribution is disabled.</string>
     <string name="coverage_missing_samples">Some exact time windows are missing, including possible market closures or insufficient time resolution. No prices were interpolated.</string>
-    <string name="history_load_more">Load older releases</string>
     <string name="history_refresh">Refresh history</string>
     <string name="ai_analysis">AI market analysis</string>
     <string name="ai_analysis_method">AI analysis method</string>
@@ -262,4 +263,9 @@
     <string name="rationale_tighter_baseline">A tighter policy path is the rule-based baseline.</string>
     <string name="rationale_easier_baseline">An easier policy path is the rule-based baseline.</string>
     <string name="rationale_no_directional_signal">The release does not produce a directional rule signal.</string>
+    <string name="display_size">Interface size</string>
+    <string name="display_size_note">Auto adjusts text and spacing to the available window width. Compact fits more content; Standard uses the original sizes. System font scaling and touch targets are preserved. Changes apply immediately and are saved.</string>
+    <string name="display_auto">Auto</string>
+    <string name="display_compact">Compact</string>
+    <string name="display_system">Standard</string>
 </resources>

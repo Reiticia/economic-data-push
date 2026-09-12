@@ -9,8 +9,10 @@ import com.macroresearch.data.model.releaseStatus
 import com.macroresearch.data.remote.EconomicCalendarClient
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.*
 import org.junit.Test
 import java.net.InetSocketAddress
@@ -128,6 +130,14 @@ class CalendarRecoveryTest {
         assertTrue(fillMissingValues(listOf(missingPrimary, row().copy(actual = "0.9"))).isEmpty())
     }
 
+    @Test fun successfulUpcomingSyncUsesABoundedFreshnessWindow() {
+        assertFalse(isFresh(savedAtMs = 0, nowMs = 1_000, maxAgeMs = 300_000))
+        assertTrue(isFresh(savedAtMs = 1_000, nowMs = 1_001, maxAgeMs = 300_000))
+        assertFalse(isFresh(savedAtMs = 1_000, nowMs = 301_000, maxAgeMs = 300_000))
+        // A clock change must not make a future timestamp fresh forever.
+        assertFalse(isFresh(savedAtMs = 2_000, nowMs = 1_000, maxAgeMs = 300_000))
+    }
+
     @Test fun proxyIsOptionalScopedAndValidated() {
         assertNull(httpProxy(""))
         assertEquals("http://127.0.0.1:17890", normalizeProxyAddress(" 127.0.0.1:17890 "))
@@ -171,6 +181,150 @@ class CalendarRecoveryTest {
             assertEquals("no-cache", server.takeRequest().getHeader("Cache-Control"))
             assertEquals("/fallback", server.takeRequest().path)
             assertTrue(server.takeRequest().path!!.startsWith("/primary"))
+        }
+    }
+
+    @Test fun rateLimitedFallbackIsReportedAndNotRetriedWhileTheWaitLasts() = runBlocking {
+        var primaryHits = 0
+        var fallbackHits = 0
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when {
+                    request.path.orEmpty().startsWith("/primary") -> {
+                        primaryHits++
+                        MockResponse().setResponseCode(503)
+                    }
+
+                    else -> {
+                        fallbackHits++
+                        MockResponse().setResponseCode(429).setHeader("Retry-After", "300")
+                    }
+                }
+            }
+            server.start()
+            val client = EconomicCalendarClient(
+                OkHttpClient(),
+                ZoneOffset.UTC,
+                primaryUrl = server.url("/primary").toString(),
+                fallbackUrl = server.url("/fallback").toString(),
+            )
+            val day = LocalDate.of(2026, 9, 10)
+
+            val first = runCatching { client.fetch(day, day) }.exceptionOrNull()
+            assertTrue("expected a typed calendar failure, got $first", first is CalendarUnavailableException)
+            val warning = (first as CalendarUnavailableException).warning
+            assertEquals(CalendarWarning.Reason.FALLBACK_RATE_LIMITED, warning.reason)
+            assertEquals(300L, warning.retryAfterSeconds)
+            assertEquals(1, fallbackHits)
+
+            // The provider asked for a five minute wait. The next refresh must not spend a
+            // request on a guaranteed 429, but must still explain the wait to the user.
+            val second = runCatching { client.fetch(day, day) }.exceptionOrNull()
+            assertTrue(second is CalendarUnavailableException)
+            val repeat = (second as CalendarUnavailableException).warning
+            assertEquals(CalendarWarning.Reason.FALLBACK_RATE_LIMITED, repeat.reason)
+            assertTrue("remaining wait should still be positive", (repeat.retryAfterSeconds ?: 0L) > 0L)
+            assertEquals(1, fallbackHits)
+            assertEquals(2, primaryHits)
+        }
+    }
+
+    @Test fun exhaustedSourcesKeepTheFallbackReasonInsteadOfThePrimaryTimeout() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(503))
+            server.enqueue(MockResponse().setResponseCode(500))
+            server.start()
+            val client = EconomicCalendarClient(
+                OkHttpClient(),
+                ZoneOffset.UTC,
+                primaryUrl = server.url("/primary").toString(),
+                fallbackUrl = server.url("/fallback").toString(),
+            )
+
+            val failure = runCatching {
+                client.fetch(LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 10))
+            }.exceptionOrNull()
+            assertTrue(failure is CalendarUnavailableException)
+            val warning = (failure as CalendarUnavailableException).warning
+            assertEquals(CalendarWarning.Reason.ALL_SOURCES_UNAVAILABLE, warning.reason)
+            // Both providers are named so the log explains what actually blocked the refresh.
+            assertTrue(warning.detail.orEmpty().contains("primary="))
+            assertTrue(warning.detail.orEmpty().contains("fallback="))
+        }
+    }
+
+    @Test fun anActivePrimaryBackoffSkipsTheBrokenRouteAndUsesFallback() = runBlocking {
+        var primaryHits = 0
+        var fallbackHits = 0
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when {
+                    request.path.orEmpty().startsWith("/primary") -> {
+                        primaryHits++
+                        MockResponse().setResponseCode(503)
+                    }
+
+                    else -> {
+                        fallbackHits++
+                        MockResponse().setBody(
+                            """[{"title":"Core PPI m/m","country":"USD","date":"2026-09-10T08:30:00-04:00","forecast":"0.3%"}]""",
+                        )
+                    }
+                }
+            }
+            server.start()
+            val backoff = CalendarBackoffStore.inMemory()
+                .apply { block(CalendarSource.PRIMARY, Instant.now().plusSeconds(120)) }
+            val client = EconomicCalendarClient(
+                OkHttpClient(),
+                ZoneOffset.UTC,
+                primaryUrl = server.url("/primary").toString(),
+                fallbackUrl = server.url("/fallback").toString(),
+                backoff = backoff,
+            )
+
+            val result = client.fetch(LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 10))
+            assertEquals(0, primaryHits)
+            assertEquals(1, fallbackHits)
+            assertEquals(1, result.events.size)
+            assertEquals(CalendarWarning.Reason.PRIMARY_UNAVAILABLE, result.warning?.reason)
+        }
+    }
+
+    @Test fun anActiveBackoffSkipsTheFallbackWithoutSpendingARequest() = runBlocking {
+        var fallbackHits = 0
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when {
+                    request.path.orEmpty().startsWith("/primary") -> MockResponse().setResponseCode(503)
+
+                    else -> {
+                        fallbackHits++
+                        MockResponse().setBody("[]")
+                    }
+                }
+            }
+            server.start()
+            // A previous run was told to wait. A cold start must honour that instead of spending
+            // another request on a guaranteed 429.
+            val backoff = CalendarBackoffStore.inMemory()
+                .apply { block(CalendarSource.FALLBACK, Instant.now().plusSeconds(120)) }
+            val client = EconomicCalendarClient(
+                OkHttpClient(),
+                ZoneOffset.UTC,
+                primaryUrl = server.url("/primary").toString(),
+                fallbackUrl = server.url("/fallback").toString(),
+                backoff = backoff,
+            )
+
+            val failure = runCatching {
+                client.fetch(LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 10))
+            }.exceptionOrNull()
+            assertTrue(failure is CalendarUnavailableException)
+            val warning = (failure as CalendarUnavailableException).warning
+            assertEquals(CalendarWarning.Reason.FALLBACK_RATE_LIMITED, warning.reason)
+            assertTrue("the remaining wait should be reported", (warning.retryAfterSeconds ?: 0L) > 0L)
+            assertEquals("the fallback must not be called while the back-off holds", 0, fallbackHits)
         }
     }
 

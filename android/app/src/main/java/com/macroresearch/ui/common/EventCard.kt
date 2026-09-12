@@ -5,6 +5,8 @@ import com.macroresearch.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,7 +26,9 @@ import com.macroresearch.ui.theme.AssetDown
 import com.macroresearch.ui.theme.AssetUp
 import com.macroresearch.ui.theme.Dovish
 import com.macroresearch.ui.theme.Upcoming
+import com.macroresearch.ui.theme.ResearchLayout
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EventCard(
     event: EconomicEvent,
@@ -41,13 +45,14 @@ fun EventCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+            modifier = Modifier.padding(ResearchLayout.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(ResearchLayout.smallGap),
         ) {
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                maxItemsInEachRow = if (ResearchLayout.stackMetadata) 1 else 2,
             ) {
                 // Lists that span several days (history) need the date; day views already show it in the header.
                 val timestamp = if (showDate) "${event.localizedShortDate()}  ${event.localTime()}" else event.localTime()
@@ -56,7 +61,11 @@ fun EventCard(
             }
             Text(event.localizedName(LocalConfiguration.current.locales[0]), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (event.actual == null) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(stringResource(R.string.previous_value, event.localizedValue(event.previous)), style = MaterialTheme.typography.bodyMedium)
                     Text(stringResource(R.string.consensus_value, event.localizedValue(event.consensus)), style = MaterialTheme.typography.bodyMedium)
                     ImportanceDots(event.importance)

@@ -7,6 +7,7 @@ import androidx.room.Room
 import com.google.gson.Gson
 import com.macroresearch.data.AnalysisPreferences
 import com.macroresearch.data.NetworkPreferences
+import com.macroresearch.data.PreferencesBackoffStore
 import com.macroresearch.data.CountryPreferences
 import com.macroresearch.data.LocalAnalysisEngine
 import com.macroresearch.data.MacroRepository
@@ -70,7 +71,7 @@ class MacroApplication : Application() {
         val networkPreferences = NetworkPreferences(this)
         val analysisPreferences = AnalysisPreferences(this)
         repository = MacroRepository(
-            calendarClient = EconomicCalendarClient(http, proxy = networkPreferences::proxy),
+            calendarClient = EconomicCalendarClient(http, proxy = networkPreferences::proxy, backoff = PreferencesBackoffStore(this)),
             marketClient = DirectMarketClient(http, proxy = networkPreferences::proxy),
             networkPreferences = networkPreferences,
             analysisPreferences = analysisPreferences,

@@ -18,11 +18,35 @@ class NetworkPreferences(context: Context) {
 
     fun save(address: String) {
         val clean = normalizeProxyAddress(address)
-        preferences.edit().putString("proxy", clean).apply()
+        preferences.edit()
+            .putString("proxy", clean)
+            // A new route must be tested immediately rather than hidden by a previous cache TTL.
+            .remove(UPCOMING_SYNC_KEY)
+            .apply()
         _address.value = clean
     }
 
     fun proxy(): Proxy? = httpProxy(_address.value)
+
+    fun upcomingSyncFresh(maxAgeMs: Long, nowMs: Long = System.currentTimeMillis()): Boolean =
+        isFresh(preferences.getLong(UPCOMING_SYNC_KEY, 0L), nowMs, maxAgeMs)
+
+    fun markUpcomingSynced(nowMs: Long = System.currentTimeMillis()) {
+        preferences.edit().putLong(UPCOMING_SYNC_KEY, nowMs).apply()
+    }
+
+    fun clearUpcomingSync() {
+        preferences.edit().remove(UPCOMING_SYNC_KEY).apply()
+    }
+
+    private companion object {
+        const val UPCOMING_SYNC_KEY = "upcoming_synced_at"
+    }
+}
+
+internal fun isFresh(savedAtMs: Long, nowMs: Long, maxAgeMs: Long): Boolean {
+    val age = nowMs - savedAtMs
+    return savedAtMs > 0L && maxAgeMs > 0L && age in 0 until maxAgeMs
 }
 
 internal fun normalizeProxyAddress(value: String): String {

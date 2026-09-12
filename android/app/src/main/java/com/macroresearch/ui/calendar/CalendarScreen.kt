@@ -51,10 +51,12 @@ import com.macroresearch.data.MacroRepository
 import com.macroresearch.ui.CalendarViewModel
 import com.macroresearch.ui.common.EventCard
 import com.macroresearch.ui.common.LoadingHint
+import com.macroresearch.ui.common.calendarWarningMessage
 import com.macroresearch.ui.common.countryLabel
 import com.macroresearch.ui.common.flag
 import com.macroresearch.ui.common.importanceLabel
 import com.macroresearch.ui.theme.Upcoming
+import com.macroresearch.ui.theme.ResearchLayout
 import com.macroresearch.ui.viewModelFactory
 import java.time.Instant
 import java.time.LocalDate
@@ -77,8 +79,8 @@ fun CalendarScreen(repository: MacroRepository, padding: PaddingValues, onEvent:
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = ResearchLayout.pagePadding, vertical = ResearchLayout.gap),
+        verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
@@ -107,10 +109,10 @@ fun CalendarScreen(repository: MacroRepository, padding: PaddingValues, onEvent:
         }
         LazyColumn(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(ResearchLayout.gap),
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
-            warning?.let { item { Text(stringResource(R.string.calendar_source_warning, it), color = MaterialTheme.colorScheme.error) } }
+            warning?.let { item { Text(calendarWarningMessage(it), color = MaterialTheme.colorScheme.error) } }
             state.error?.let { item { Text(stringResource(R.string.load_failed, it), color = MaterialTheme.colorScheme.error) } }
             if (state.loading) item { LoadingHint() }
             if (!state.loading && state.filtered.isEmpty()) item {

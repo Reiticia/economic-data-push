@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.macroresearch.data.MacroRepository
+import com.macroresearch.data.CalendarWarning
 import com.macroresearch.data.model.EconomicEvent
 import com.macroresearch.data.model.currentStatus
 import com.macroresearch.data.model.MarketResponse
@@ -59,6 +60,7 @@ import com.macroresearch.ui.ReleaseFetchOutcome
 import com.macroresearch.ui.common.assetLabel
 import com.macroresearch.ui.common.categoryLabel
 import com.macroresearch.ui.common.countryLabel
+import com.macroresearch.ui.common.calendarWarningMessage
 import com.macroresearch.ui.common.importanceLabel
 import com.macroresearch.ui.common.localizedCountdown as countdown
 import com.macroresearch.ui.common.flag
@@ -147,7 +149,7 @@ private fun EventContent(
     onAnalysis: () -> Unit,
     onHistory: () -> Unit,
     onFixTranslation: () -> Unit,
-    warning: String?,
+    warning: CalendarWarning?,
     releaseFetching: Boolean,
     releaseOutcome: ReleaseFetchOutcome?,
     releaseError: String?,
@@ -215,7 +217,7 @@ private fun ReleaseRetryCard(
     fetching: Boolean,
     outcome: ReleaseFetchOutcome?,
     error: String?,
-    warning: String?,
+    warning: CalendarWarning?,
     onFetch: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -239,7 +241,7 @@ private fun ReleaseRetryCard(
             // The source warning explains why a retry still could not fill the value.
             warning?.let {
                 Text(
-                    stringResource(R.string.calendar_source_warning, it),
+                    calendarWarningMessage(it),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
